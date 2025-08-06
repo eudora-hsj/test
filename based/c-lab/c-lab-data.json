@@ -1,0 +1,83 @@
+{
+  "nodes": [
+    { "id": "center", "name": "文化實驗 你來定義", "type": "text_box" },
+    { 
+      "id": "node1", 
+      "name": "玩聚場藝術節", 
+      "type": "image", 
+      "img": "./imgs/1.jpg",
+      "children": [
+        { "id": "node1_1", "name": "2025", "type": "image", "img": "./imgs/1.jpg" },
+        { "id": "node1_2", "name": "2024", "type": "image", "img": "./imgs/2.jpg" },
+        { "id": "node1_3", "name": "2023", "type": "image", "img": "./imgs/3.jpg" },
+        { "id": "node1_4", "name": "2022", "type": "image", "img": "./imgs/4.jpg" }
+      ]
+    },
+    { 
+      "id": "node2", 
+      "name": "未來視覺實驗室", 
+      "type": "image", 
+      "img": "./imgs/2.jpg",
+      "children": [
+        { "id": "node2_1", "name": "2025", "type": "image", "img": "./imgs/2.jpg" },
+        { "id": "node2_2", "name": "2024", "type": "image", "img": "./imgs/3.jpg" },
+        { "id": "node2_3", "name": "2023", "type": "image", "img": "./imgs/4.jpg" },
+        { "id": "node2_4", "name": "2022", "type": "image", "img": "./imgs/5.jpg" },
+        { "id": "node2_5", "name": "2021", "type": "image", "img": "./imgs/1.jpg" }
+      ]
+    },
+    { 
+      "id": "node3", 
+      "name": "當代藝術實驗平台年度計畫", 
+      "type": "image", 
+      "img": "./imgs/3.jpg",
+      "children": [
+        { "id": "node3_1", "name": "2025", "type": "image", "img": "./imgs/3.jpg" },
+        { "id": "node3_2", "name": "2024", "type": "image", "img": "./imgs/4.jpg" },
+        { "id": "node3_3", "name": "2023", "type": "image", "img": "./imgs/5.jpg" }
+      ]
+    },
+    { 
+      "id": "node4", 
+      "name": "CREATORS", 
+      "type": "image", 
+      "img": "./imgs/4.jpg",
+      "children": [
+        { "id": "node4_1", "name": "2025", "type": "image", "img": "./imgs/4.jpg" },
+        { "id": "node4_2", "name": "2024", "type": "image", "img": "./imgs/5.jpg" },
+        { "id": "node4_3", "name": "2023", "type": "image", "img": "./imgs/1.jpg" },
+        { "id": "node4_4", "name": "2022", "type": "image", "img": "./imgs/2.jpg" }
+      ]
+    },
+    { 
+      "id": "node5", 
+      "name": "臺灣聲響實驗室", 
+      "type": "image", 
+      "img": "./imgs/5.jpg",
+      "children": [
+        { "id": "node5_1", "name": "2025", "type": "image", "img": "./imgs/5.jpg" },
+        { "id": "node5_2", "name": "2024", "type": "image", "img": "./imgs/1.jpg" },
+        { "id": "node5_3", "name": "2023", "type": "image", "img": "./imgs/2.jpg" },
+        { "id": "node5_4", "name": "2022", "type": "image", "img": "./imgs/3.jpg" },
+        { "id": "node5_5", "name": "2021", "type": "image", "img": "./imgs/4.jpg" }
+      ]
+    }
+  ],
+  "links": [
+    { "source": "center", "target": "node1" },
+    { "source": "center", "target": "node2" },
+    { "source": "center", "target": "node3" },
+    { "source": "center", "target": "node4" },
+    { "source": "center", "target": "node5" },
+    { "source": "node1", "target": "node2" },
+    { "source": "node1", "target": "node3" },
+    { "source": "node1", "target": "node4" },
+    { "source": "node1", "target": "node5" },
+    { "source": "node2", "target": "node3" },
+    { "source": "node2", "target": "node4" },
+    { "source": "node2", "target": "node5" },
+    { "source": "node3", "target": "node4" },
+    { "source": "node3", "target": "node5" },
+    { "source": "node4", "target": "node5" }
+  ]
+}

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <style>
+	  body { margin: 0; background-color: #000; font-family: Arial, sans-serif; }
+	  #back-button {
+		  position: fixed;
+		  bottom: 40px;
+		  left: 50%;
+		  transform: translateX(-50%);
+		  z-index: 1000;
+		  background: rgba(255, 255, 255, 0.9);
+		  border: 2px solid white;
+		  color: black;
+		  padding: 15px 25px;
+		  border-radius: 8px;
+		  cursor: pointer;
+		  font-size: 16px;
+		  font-weight: bold;
+		  display: none;
+		  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	  }
+	  #back-button:hover {
+		  background: white;
+	  }
+  </style>
+  
+  <script src="//cdn.jsdelivr.net/npm/3d-force-graph"></script>
+  <!--<script src="../../dist/3d-force-graph.js"></script>-->
+</head>
+
+<body>
+<div id="3d-graph"></div>
+<button id="back-button">返回上層</button>
+
+<script type="module">
+  import * as THREE from 'https://esm.sh/three';
+  import SpriteText from "https://esm.sh/three-spritetext";
+  import { forceZ, forceCollide, forceRadial } from 'https://esm.sh/d3-force-3d';
+
+  let originalData = null;
+  let currentLayer = 'main';
+  let currentParent = null;
+  let Graph = null;
+  let focusedNode = null; // Track currently focused node
+
+  fetch('./c-lab-data.json').then(res => res.json()).then(data => {
+    originalData = data;
+
+    // Preload all images (including child images)
+    const allImageUrls = [];
+    data.nodes.forEach(node => {
+      if (node.type === 'image' && node.img) {
+        allImageUrls.push(node.img);
+      }
+      if (node.children) {
+        node.children.forEach(child => {
+          if (child.type === 'image' && child.img) {
+            allImageUrls.push(child.img);
+          }
+        });
+      }
+    });
+
+    const textures = {};
+    const loadingManager = new THREE.LoadingManager();
+    const textureLoader = new THREE.TextureLoader(loadingManager);
+
+    allImageUrls.forEach(url => {
+      textureLoader.load(url, texture => {
+        textures[url] = texture;
+      });
+    });
+
+    loadingManager.onLoad = () => {
+      initGraph(data, textures);
+    };
+  });
+
+  function initGraph(data, textures) {
+    Graph = ForceGraph3D()
+    (document.getElementById('3d-graph'))
+    .backgroundColor('#000000')
+    .linkWidth(0.5)
+    .linkDirectionalParticles(2)
+    .nodeThreeObject(node => createNodeObject(node, textures))
+    .onNodeClick(node => handleNodeClick(node, textures));
+
+    loadMainLayer(data, textures);
+    setupBackButton();
+  }
+
+  function createNodeObject(node, textures) {
+    if (node.type === 'image') {
+      const imgTexture = textures[node.img];
+      if (!imgTexture) {
+        return new THREE.Object3D();
+      }
+      imgTexture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.SpriteMaterial({ map: imgTexture });
+      const sprite = new THREE.Sprite(material);
+
+      // Make main layer nodes larger
+      if (node.children && node.children.length > 0) {
+        sprite.scale.set(60, 45);
+      } else {
+        sprite.scale.set(40, 30);
+      }
+      return sprite;
+    } else if (node.type === 'text_box') {
+      const sprite = new SpriteText(node.name, 8, 'white');
+      sprite.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+      sprite.padding = [16, 8];
+      sprite.borderWidth = 2;
+      sprite.borderColor = 'white';
+      return sprite;
+    }
+  }
+
+  function loadMainLayer(data, textures) {
+    currentLayer = 'main';
+    currentParent = null;
+    document.getElementById('back-button').style.display = 'none';
+
+    // Fix center node to position 0,0,0
+    const centerNode = data.nodes.find(n => n.id === 'center');
+    if (centerNode) {
+      centerNode.fx = 0;
+      centerNode.fy = 0;
+      centerNode.fz = 0;
+    }
+
+    Graph.graphData(data);
+
+    // Apply original layer configurations
+    Graph.d3Force('charge').strength(-300);
+    Graph.d3Force('link').distance(150);
+    Graph.d3Force('z', forceZ(0).strength(0.1));
+    Graph.d3Force('collide', forceCollide(55));
+    Graph.d3Force('radial', forceRadial(300, 0, 0, 0).strength(0.02));
+  }
+
+  function loadSubLayer(parentNode, textures) {
+    if (!parentNode.children || parentNode.children.length === 0) return;
+
+    currentLayer = 'sub';
+    currentParent = parentNode;
+    document.getElementById('back-button').style.display = 'block';
+
+    // Create sub-layer data with network connections (like main layer)
+    const children = parentNode.children;
+    const subLinks = [];
+
+    // Create all-to-all connections like in main layer
+    for (let i = 0; i < children.length; i++) {
+      for (let j = i + 1; j < children.length; j++) {
+        subLinks.push({
+          source: children[i].id,
+          target: children[j].id
+        });
+      }
+    }
+
+    const subData = {
+      nodes: [...children],
+      links: subLinks
+    };
+
+    Graph.graphData(subData);
+
+    // Apply sub-layer configurations similar to main layer
+    Graph.d3Force('charge').strength(-200);
+    Graph.d3Force('link').distance(120);
+    Graph.d3Force('z', forceZ(0).strength(0.1));
+    Graph.d3Force('collide', forceCollide(45));
+    Graph.d3Force('radial', forceRadial(200, 0, 0, 0).strength(0.03));
+  }
+
+  function animateScale(nodeObject, toScale) {
+    const startScale = { x: nodeObject.scale.x, y: nodeObject.scale.y, z: nodeObject.scale.z };
+    const duration = 600;
+    const startTime = Date.now();
+
+    function animate() {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const easeOut = 1 - Math.pow(1 - t, 2);
+
+      nodeObject.scale.set(
+        startScale.x + (toScale.x - startScale.x) * easeOut,
+        startScale.y + (toScale.y - startScale.y) * easeOut,
+        startScale.z + (toScale.z - startScale.z) * easeOut
+      );
+
+      if (t < 1) requestAnimationFrame(animate);
+    }
+    animate();
+  }
+
+  function handleNodeClick(node, textures) {
+    if (currentLayer === 'main' && node.type === 'image' && node.children) {
+      loadSubLayer(node, textures);
+    } else if (currentLayer === 'sub' && node.type === 'image') {
+      const baseScale = { x: 40, y: 30, z: 1 };
+      const targetScale = { x: baseScale.x * 1.3, y: baseScale.y * 1.3, z: baseScale.z };
+
+      // Shrink previous focused node
+      if (focusedNode && focusedNode !== node && focusedNode.__threeObj) {
+        animateScale(focusedNode.__threeObj, baseScale);
+      }
+
+      // Enlarge current node, only if it's not already focused
+      if (node !== focusedNode && node.__threeObj) {
+        animateScale(node.__threeObj, targetScale);
+      }
+      
+      focusedNode = node; // Update focused node
+    }
+  }
+
+  function setupBackButton() {
+    document.getElementById('back-button').addEventListener('click', () => {
+      if (currentLayer === 'sub') {
+        loadMainLayer(originalData);
+      }
+    });
+  }
+</script>
+</body>
+</html>
