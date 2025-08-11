@@ -115,35 +115,174 @@
     setupResetButton();
   }
 
+  function createTextureWithLabel(imgTexture, labelText) {
+    // Create a canvas to combine image and text
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Get original image dimensions
+    const originalWidth = imgTexture.image.width;
+    const originalHeight = imgTexture.image.height;
+    
+    // Fixed label dimensions (consistent across all images)
+    const fixedLabelHeight = 45; // Increased height for larger text
+    const fixedFontSize = 22; // Increased font size
+    const borderWidth = 3;
+    const blackBorderWidth = 9;
+    
+    // Calculate canvas size based on image aspect ratio but with fixed label height
+    const aspectRatio = originalWidth / originalHeight;
+    let canvasWidth, canvasHeight;
+    
+    if (aspectRatio > 1) {
+      // Landscape
+      canvasWidth = 400; // Higher resolution
+      canvasHeight = Math.round(400 / aspectRatio) + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
+    } else {
+      // Portrait or square
+      canvasHeight = 350 + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
+      canvasWidth = Math.round(350 * aspectRatio);
+    }
+    
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    
+    // Improve text rendering quality
+    ctx.textRenderingOptimization = 'optimizeQuality';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Draw the original image
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    return new Promise((resolve) => {
+      img.onload = () => {
+        // Calculate image area dimensions
+        const imageAreaHeight = canvasHeight - fixedLabelHeight;
+        const imageAreaWidth = canvasWidth;
+        
+        // Fill background with white (thin outer border)
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, fixedLabelHeight, imageAreaWidth, imageAreaHeight);
+        
+        // Fill inner area with black (thick inner border)
+        ctx.fillStyle = 'black';
+        ctx.fillRect(borderWidth, fixedLabelHeight + borderWidth, 
+                    imageAreaWidth - borderWidth * 2, imageAreaHeight - borderWidth * 2);
+        
+        // Draw image with border space
+        const imageX = borderWidth + blackBorderWidth;
+        const imageY = fixedLabelHeight + borderWidth + blackBorderWidth;
+        const imageW = imageAreaWidth - (borderWidth + blackBorderWidth) * 2;
+        const imageH = imageAreaHeight - (borderWidth + blackBorderWidth) * 2;
+        
+        ctx.drawImage(img, imageX, imageY, imageW, imageH);
+        
+        // Add text label ABOVE the white frame (FIXED SIZE)
+        if (labelText) {
+          // Fixed font size and measurements with better text rendering
+          ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          const textMetrics = ctx.measureText(labelText);
+          const textWidth = textMetrics.width;
+          
+          // Fixed padding and dimensions
+          const padding = 10;
+          const labelWidth = textWidth + padding * 2;
+          const labelHeight = fixedLabelHeight;
+          
+          // Position the label at top-left
+          const labelX = 0;
+          const labelY = 0;
+          
+          // Save context
+          ctx.save();
+          
+          // Create path for label
+          ctx.beginPath();
+          ctx.rect(labelX, labelY, labelWidth, labelHeight);
+          ctx.closePath();
+          
+          // Fill the label background (bright white)
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+          ctx.fill();
+          
+          // Add black border to the label
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Text (fixed size, centered vertically with better rendering)
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+          ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labelText, labelX + padding, labelY + labelHeight / 2);
+          
+          ctx.restore();
+        }
+        
+        // Create texture from canvas
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.generateMipmaps = false; // Better for text rendering
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        resolve(texture);
+      };
+      
+      // Convert THREE texture to image
+      img.src = imgTexture.image.src;
+    });
+  }
+
   function createNodeObject(node, textures) {
     if (node.type === 'image') {
       const imgTexture = textures[node.img];
       if (!imgTexture) {
         return new THREE.Object3D();
       }
-      imgTexture.colorSpace = THREE.SRGBColorSpace;
-      const material = new THREE.SpriteMaterial({ 
-        map: imgTexture, 
-        transparent: true, 
-        opacity: isTransitioning ? 0 : 1 // Start transparent only during transitions
-      });
-      const sprite = new THREE.Sprite(material);
-
-      // Make main layer nodes larger
-      if (node.children && node.children.length > 0) {
+      
+      // For nodes with children, create texture with label
+      if (node.children && node.children.length > 0 && node.name) {
+        // Use a placeholder for now, we'll update this asynchronously
+        const material = new THREE.SpriteMaterial({ 
+          map: imgTexture,
+          transparent: true, 
+          opacity: isTransitioning ? 0 : 1
+        });
+        const sprite = new THREE.Sprite(material);
         sprite.scale.set(60, 45);
+        
+        // Asynchronously create texture with label
+        createTextureWithLabel(imgTexture, node.name).then(labeledTexture => {
+          material.map = labeledTexture;
+          material.needsUpdate = true;
+        });
+        
+        return sprite;
       } else {
+        // Simple image without label
+        imgTexture.colorSpace = THREE.SRGBColorSpace;
+        const material = new THREE.SpriteMaterial({ 
+          map: imgTexture, 
+          transparent: true, 
+          opacity: isTransitioning ? 0 : 1
+        });
+        const sprite = new THREE.Sprite(material);
         sprite.scale.set(40, 30);
+        return sprite;
       }
-      return sprite;
     } else if (node.type === 'text_box') {
-      const sprite = new SpriteText(node.name, 8, 'white');
+      const sprite = new SpriteText(node.name, 6, 'white');
       sprite.backgroundColor = 'rgba(0, 0, 0, 0.8)';
       sprite.padding = [16, 8];
       sprite.borderWidth = 2;
       sprite.borderColor = 'white';
       sprite.material.transparent = true;
-      sprite.material.opacity = isTransitioning ? 0 : 1; // Start transparent only during transitions
+      sprite.material.opacity = 1;
       return sprite;
     }
   }
