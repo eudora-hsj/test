@@ -9,9 +9,8 @@
     }
 	  #back-button {
 		  position: fixed;
-		  bottom: 40px;
-		  left: 50%;
-		  transform: translateX(-50%);
+		  top: 20px;
+		  left: 20px;
 		  z-index: 1000;
 		  background: rgba(255, 255, 255, 0.9);
 		  border: 2px solid white;
@@ -27,6 +26,24 @@
 	  #back-button:hover {
 		  background: white;
 	  }
+    #reset-button {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+	    background: #111;
+      border: none;
+      box-shadow: none;
+      outline: none;
+      color: white;
+      padding: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    #reset-button:hover {
+      background: #444;
+    }
   </style>
   
   <script src="//cdn.jsdelivr.net/npm/3d-force-graph"></script>
@@ -36,6 +53,7 @@
 <body>
 <div id="3d-graph"></div>
 <button id="back-button">返回上層</button>
+<button id="reset-button">Reset</button>
 
 <script type="module">
   import * as THREE from 'https://esm.sh/three';
@@ -89,10 +107,12 @@
     .linkWidth(0.5)
     .linkDirectionalParticles(2)
     .nodeThreeObject(node => createNodeObject(node, textures))
-    .onNodeClick(node => handleNodeClick(node, textures));
+    .onNodeClick(node => handleNodeClick(node, textures))
+    .enableNodeDrag(true); // Explicitly enable node dragging
 
     loadMainLayer(data, textures);
     setupBackButton();
+    setupResetButton();
   }
 
   function createNodeObject(node, textures) {
@@ -272,6 +292,39 @@
       if (currentLayer === 'sub') {
         transitionToLayer(() => loadMainLayer(originalData));
       }
+    });
+  }
+
+  function setupResetButton() {
+    document.getElementById('reset-button').addEventListener('click', () => {
+      if (currentLayer === 'sub') {
+        // Reset sub layer - stay in sub layer but reset its state
+        transitionToLayer(() => loadSubLayer(currentParent));
+        
+        // Reset camera to a closer position for sub layer
+        setTimeout(() => {
+          Graph.cameraPosition(
+            { x: 0, y: 0, z: 300 }, // Closer camera position for sub layer
+            { x: 0, y: 0, z: 0 },   // Look at center
+            1000 // Transition duration
+          );
+        }, 100);
+      } else {
+        // Reset main layer
+        loadMainLayer(originalData);
+        
+        // Reset camera position to closer default view for main layer
+        setTimeout(() => {
+          Graph.cameraPosition(
+            { x: 0, y: 0, z: 350 }, // Closer camera position for main layer
+            { x: 0, y: 0, z: 0 },   // Look at center
+            1000 // Transition duration
+          );
+        }, 100);
+      }
+      
+      // Reset focused node
+      focusedNode = null;
     });
   }
 </script>
