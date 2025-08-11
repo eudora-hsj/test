@@ -231,14 +231,23 @@ const scrollTriggerEvents = {
         // 4. 為每個步驟建立獨立的 ScrollTrigger 來觸發 callback
         const steps = gsap.utils.toArray(".step")
         steps.forEach((step, i) => {
+            // 計算每個步驟的平均觸發點
+            const isFirstStep = i === 0;
+            const triggerProgress = isFirstStep ? 
+                (i + 0.8) / stepData.length : // 第一步延後觸發，讓它保持更久
+                (i + 0.5) / stepData.length; // 其他步驟正常觸發
+            const triggerPercent = Math.round(triggerProgress * 100);
+            
             ScrollTrigger.create({
                 trigger: step,
-                start: "top",
-                end: "center",
+                start: `top ${100 - triggerPercent}%`, // 動態計算觸發點
+                end: isFirstStep ? "bottom 15%" : "bottom 25%", // 第一步延後結束
                 onEnter: () => {
+                    console.log(`步驟 ${i} 進入 (觸發點: ${100 - triggerPercent}%)`);
                     stepData[i].callback()
                 },
                 onEnterBack: () => {
+                    console.log(`步驟 ${i} 返回`);
                     stepData[i].callback()
                 }
             })
@@ -304,6 +313,19 @@ const setInitData = () => {
             })
         })
     })
+
+    // 添加一個額外的步驟，讓最后一個狀態保持更久
+    const lastLocation = stepData[stepData.length - 1];
+    if (lastLocation && lastLocation.type === 'location') {
+        stepData.push({
+            type: 'location-extended',
+            data: lastLocation.data,
+            callback: () => {
+                // 保持最后一個位置的狀態
+                scrollTriggerEvents.toLocation(lastLocation.data)
+            }
+        })
+    }
 
     state.stepData = stepData
 
