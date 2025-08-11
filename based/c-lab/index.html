@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <style>
 	  body { margin: 0; background-color: #000; font-family: Arial, sans-serif; }
+    #3d-graph {
+      transition: opacity 0.5s ease-in-out;
+    }
 	  #back-button {
 		  position: fixed;
 		  bottom: 40px;
@@ -44,6 +47,7 @@
   let currentParent = null;
   let Graph = null;
   let focusedNode = null; // Track currently focused node
+  let isTransitioning = false; // Track if we're in a transition
 
   fetch('./c-lab-data.json').then(res => res.json()).then(data => {
     originalData = data;
@@ -98,7 +102,11 @@
         return new THREE.Object3D();
       }
       imgTexture.colorSpace = THREE.SRGBColorSpace;
-      const material = new THREE.SpriteMaterial({ map: imgTexture });
+      const material = new THREE.SpriteMaterial({ 
+        map: imgTexture, 
+        transparent: true, 
+        opacity: isTransitioning ? 0 : 1 // Start transparent only during transitions
+      });
       const sprite = new THREE.Sprite(material);
 
       // Make main layer nodes larger
@@ -114,6 +122,8 @@
       sprite.padding = [16, 8];
       sprite.borderWidth = 2;
       sprite.borderColor = 'white';
+      sprite.material.transparent = true;
+      sprite.material.opacity = isTransitioning ? 0 : 1; // Start transparent only during transitions
       return sprite;
     }
   }
@@ -177,6 +187,44 @@
     Graph.d3Force('radial', forceRadial(200, 0, 0, 0).strength(0.03));
   }
 
+  function fadeInNodes() {
+    const { nodes } = Graph.graphData();
+    const duration = 800;
+    const startTime = Date.now();
+
+    function animate() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const opacity = progress;
+
+      nodes.forEach(node => {
+        if (node.__threeObj && node.__threeObj.material) {
+          node.__threeObj.material.opacity = opacity;
+        }
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        isTransitioning = false; // Transition complete
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  function transitionToLayer(loadFunction) {
+    isTransitioning = true; // Mark that we're transitioning
+    
+    // Load new data immediately
+    loadFunction();
+    
+    // Then fade in the new nodes
+    setTimeout(() => {
+      fadeInNodes();
+    }, 50); // Smaller delay to reduce any flash
+  }
+
   function animateScale(nodeObject, toScale) {
     const startScale = { x: nodeObject.scale.x, y: nodeObject.scale.y, z: nodeObject.scale.z };
     const duration = 600;
@@ -200,7 +248,7 @@
 
   function handleNodeClick(node, textures) {
     if (currentLayer === 'main' && node.type === 'image' && node.children) {
-      loadSubLayer(node, textures);
+      transitionToLayer(() => loadSubLayer(node, textures));
     } else if (currentLayer === 'sub' && node.type === 'image') {
       const baseScale = { x: 40, y: 30, z: 1 };
       const targetScale = { x: baseScale.x * 1.3, y: baseScale.y * 1.3, z: baseScale.z };
@@ -222,7 +270,7 @@
   function setupBackButton() {
     document.getElementById('back-button').addEventListener('click', () => {
       if (currentLayer === 'sub') {
-        loadMainLayer(originalData);
+        transitionToLayer(() => loadMainLayer(originalData));
       }
     });
   }
