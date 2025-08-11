@@ -125,8 +125,8 @@
     const originalHeight = imgTexture.image.height;
     
     // Fixed label dimensions (consistent across all images)
-    const fixedLabelHeight = 45; // Increased height for larger text
-    const fixedFontSize = 22; // Increased font size
+    const fixedLabelHeight = 50; // Increased height for even larger text
+    const fixedFontSize = 26; // Increased font size
     const borderWidth = 3;
     const blackBorderWidth = 9;
     
@@ -245,7 +245,7 @@
         return new THREE.Object3D();
       }
       
-      // For nodes with children, create texture with label
+      // For nodes with children (first layer), create texture with label
       if (node.children && node.children.length > 0 && node.name) {
         // Use a placeholder for now, we'll update this asynchronously
         const material = new THREE.SpriteMaterial({ 
@@ -263,7 +263,27 @@
         });
         
         return sprite;
-      } else {
+      } 
+      // For second layer nodes (children), also create texture with label if they have name
+      else if (node.name) {
+        // Use a placeholder for now, we'll update this asynchronously
+        const material = new THREE.SpriteMaterial({ 
+          map: imgTexture,
+          transparent: true, 
+          opacity: isTransitioning ? 0 : 1
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(40, 30);
+        
+        // Asynchronously create texture with label for second layer
+        createTextureWithLabel(imgTexture, node.name).then(labeledTexture => {
+          material.map = labeledTexture;
+          material.needsUpdate = true;
+        });
+        
+        return sprite;
+      }
+      else {
         // Simple image without label
         imgTexture.colorSpace = THREE.SRGBColorSpace;
         const material = new THREE.SpriteMaterial({ 
