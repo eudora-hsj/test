@@ -114,6 +114,17 @@
     .onNodeClick(node => handleNodeClick(node, textures))
     .enableNodeDrag(true); // Explicitly enable node dragging
 
+    // Improve overall sharpness by matching renderer DPR (cap at 2 for perf)
+    try {
+      const renderer = Graph && Graph.renderer && Graph.renderer();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (renderer && renderer.setPixelRatio) renderer.setPixelRatio(dpr);
+      window.addEventListener('resize', () => {
+        const r = Graph && Graph.renderer && Graph.renderer();
+        if (r && r.setPixelRatio) r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      });
+    } catch (_) {}
+
     loadMainLayer(data, textures);
     setupBackButton();
     setupResetButton();
@@ -128,31 +139,42 @@
     const originalWidth = imgTexture.image.width;
     const originalHeight = imgTexture.image.height;
     
-    // Fixed label dimensions (consistent across all images)
-    const fixedLabelHeight = 50; // Increased height for even larger text
-    const fixedFontSize = 26; // Increased font size
+    // Fixed label dimensions (consistent across all images) in CSS pixels
+    const fixedLabelHeight = 60;
+    const fixedFontSize = 32;
     const borderWidth = 3;
     const blackBorderWidth = 9;
     
     // Calculate canvas size based on image aspect ratio but with fixed label height
     const aspectRatio = originalWidth / originalHeight;
-    let canvasWidth, canvasHeight;
+    let canvasWidthCss, canvasHeightCss;
     
     if (aspectRatio > 1) {
       // Landscape
-      canvasWidth = 400; // Higher resolution
-      canvasHeight = Math.round(400 / aspectRatio) + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
+      canvasWidthCss = 512; // base width for image area
+      canvasHeightCss = Math.round(512 / aspectRatio) + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
     } else {
       // Portrait or square
-      canvasHeight = 350 + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
-      canvasWidth = Math.round(350 * aspectRatio);
+      canvasHeightCss = 448 + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
+      canvasWidthCss = Math.max(256, Math.round(448 * aspectRatio));
     }
+
+    // Measure label text at fixed font size and expand canvas to fit the full title (single line)
+    const padding = 10;
+    ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
+    const measuredTextWidth = labelText ? ctx.measureText(labelText).width : 0;
+    const desiredLabelWidth = labelText ? (measuredTextWidth + padding * 2) : 0;
+    const maxCanvasWidthCss = 2048; // safety cap to avoid huge textures
+    const baseImageWidthCss = canvasWidthCss; // lock image area width to base
+    canvasWidthCss = Math.min(maxCanvasWidthCss, Math.max(canvasWidthCss, desiredLabelWidth));
     
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    // High-DPI rendering
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.floor(canvasWidthCss * dpr));
+    canvas.height = Math.max(1, Math.floor(canvasHeightCss * dpr));
+    ctx.scale(dpr, dpr);
     
     // Improve text rendering quality
-    ctx.textRenderingOptimization = 'optimizeQuality';
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     
@@ -162,9 +184,10 @@
     
     return new Promise((resolve) => {
       img.onload = () => {
-        // Calculate image area dimensions
-        const imageAreaHeight = canvasHeight - fixedLabelHeight;
-        const imageAreaWidth = canvasWidth;
+        // Calculate image area dimensions (CSS pixel space)
+        const imageAreaHeight = canvasHeightCss - fixedLabelHeight;
+        // Keep image/border width fixed to baseImageWidthCss so the image isn't stretched
+        const imageAreaWidth = baseImageWidthCss;
         
         // Fill background with white (thin outer border)
         ctx.fillStyle = 'white';
@@ -183,57 +206,43 @@
         
         ctx.drawImage(img, imageX, imageY, imageW, imageH);
         
-        // Add text label ABOVE the white frame (FIXED SIZE)
+        // Add text label ABOVE the white frame (single-line, allow exceeding image width)
         if (labelText) {
-          // Fixed font size and measurements with better text rendering
-          ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          const textMetrics = ctx.measureText(labelText);
-          const textWidth = textMetrics.width;
-          
-          // Fixed padding and dimensions
-          const padding = 10;
-          const labelWidth = textWidth + padding * 2;
+          ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
+
+          const labelWidth = desiredLabelWidth;
           const labelHeight = fixedLabelHeight;
-          
-          // Position the label at top-left
           const labelX = 0;
           const labelY = 0;
-          
-          // Save context
+
           ctx.save();
-          
-          // Create path for label
           ctx.beginPath();
           ctx.rect(labelX, labelY, labelWidth, labelHeight);
           ctx.closePath();
-          
-          // Fill the label background (bright white)
           ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
           ctx.fill();
-          
-          // Add black border to the label
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
           ctx.lineWidth = 2;
           ctx.stroke();
-          
-          // Text (fixed size, centered vertically with better rendering)
           ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-          ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
           ctx.fillText(labelText, labelX + padding, labelY + labelHeight / 2);
-          
           ctx.restore();
         }
         
         // Create texture from canvas
         const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
-        texture.generateMipmaps = false; // Better for text rendering
-        texture.minFilter = THREE.LinearFilter;
+        texture.generateMipmaps = true;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
         texture.magFilter = THREE.LinearFilter;
+        try {
+          const renderer = (Graph && Graph.renderer) ? Graph.renderer() : null;
+          if (renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy) {
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          }
+        } catch (_) {}
         resolve(texture);
       };
       
@@ -258,12 +267,19 @@
           opacity: isTransitioning ? 0 : 1
         });
         const sprite = new THREE.Sprite(material);
+        // Temporary scale; will be updated after labeled texture arrives to keep aspect ratio
         sprite.scale.set(60, 45);
         
         // Asynchronously create texture with label
         createTextureWithLabel(imgTexture, node.name).then(labeledTexture => {
           material.map = labeledTexture;
           material.needsUpdate = true;
+          // Preserve aspect ratio based on texture size
+          const texW = labeledTexture.image.width;
+          const texH = labeledTexture.image.height;
+          const targetHeight = 55;
+          const targetWidth = targetHeight * (texW / texH);
+          sprite.scale.set(targetWidth, targetHeight, 1);
         });
         
         return sprite;
@@ -277,12 +293,19 @@
           opacity: isTransitioning ? 0 : 1
         });
         const sprite = new THREE.Sprite(material);
+        // Temporary scale; will be updated after labeled texture arrives to keep aspect ratio
         sprite.scale.set(40, 30);
         
         // Asynchronously create texture with label for second layer
         createTextureWithLabel(imgTexture, node.name).then(labeledTexture => {
           material.map = labeledTexture;
           material.needsUpdate = true;
+          // Preserve aspect ratio based on texture size
+          const texW = labeledTexture.image.width;
+          const texH = labeledTexture.image.height;
+          const targetHeight = 38;
+          const targetWidth = targetHeight * (texW / texH);
+          sprite.scale.set(targetWidth, targetHeight, 1);
         });
         
         return sprite;
@@ -296,7 +319,16 @@
           opacity: isTransitioning ? 0 : 1
         });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.set(40, 30);
+        // Keep aspect ratio for pure image sprites
+        try {
+          const iw = imgTexture.image.width || 4;
+          const ih = imgTexture.image.height || 3;
+          const targetHeight = 30;
+          const targetWidth = targetHeight * (iw / ih);
+          sprite.scale.set(targetWidth, targetHeight, 1);
+        } catch (_) {
+          sprite.scale.set(40, 30);
+        }
         return sprite;
       }
     } else if (node.type === 'text_box') {
