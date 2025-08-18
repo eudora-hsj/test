@@ -482,6 +482,263 @@
     );
   }
 
+  // 共用：鏡頭聚焦到指定節點（稍微偏移視角）
+  function focusCameraOnNode(node, {
+    distance = 200,
+    offsetX = 50,
+    offsetY = 30,
+    duration = 1000
+  } = {}) {
+    const nodePosition = node
+    const cameraPosition = {
+      x: nodePosition.x + offsetX,
+      y: nodePosition.y + offsetY,
+      z: nodePosition.z + distance
+    }
+    Graph.cameraPosition(
+      cameraPosition,
+      { x: nodePosition.x, y: nodePosition.y, z: nodePosition.z },
+      duration
+    )
+  }
+
+  // 第二層專用：鏡頭聚焦到指定節點（可獨立調整參數，不與第一層共用）
+  function focusCameraOnNodeSub(node, {
+    distance = 140,
+    offsetX = 40,
+    offsetY = 24,
+    duration = 1000
+  } = {}) {
+    const nodePosition = node
+    const cameraPosition = {
+      x: nodePosition.x + offsetX,
+      y: nodePosition.y + offsetY,
+      z: nodePosition.z + distance
+    }
+    Graph.cameraPosition(
+      cameraPosition,
+      { x: nodePosition.x, y: nodePosition.y, z: nodePosition.z },
+      duration
+    )
+  }
+
+  // 使節點永遠渲染在最上層（避免被擋住）
+  function bringNodeToFront(node) {
+    const obj = node && node.__threeObj
+    if (!obj) return
+    obj.renderOrder = 999
+    const mat = obj.material
+    if (mat) {
+      mat.depthTest = false
+      mat.depthWrite = false
+      mat.needsUpdate = true
+    }
+  }
+
+  // 恢復節點的深度測試設定
+  function resetNodeDepth(node) {
+    const obj = node && node.__threeObj
+    if (!obj) return
+    obj.renderOrder = 0
+    const mat = obj.material
+    if (mat) {
+      mat.depthTest = true
+      mat.depthWrite = true
+      mat.needsUpdate = true
+    }
+  }
+
+  // 在動畫期間固定所有節點位置，避免視覺上像被拖曳
+  function lockNodes() {
+    const data = Graph.graphData()
+    if (!data || !data.nodes) return
+    data.nodes.forEach(n => {
+      n.fx = n.x
+      n.fy = n.y
+      n.fz = n.z
+    })
+  }
+
+  function unlockNodes() {
+    const data = Graph.graphData()
+    if (!data || !data.nodes) return
+    data.nodes.forEach(n => {
+      n.fx = undefined
+      n.fy = undefined
+      n.fz = undefined
+    })
+  }
+
+  // 以 FOV 變焦，避免移動相機位置產生透視差
+  let originalFov = null
+
+  function ensureOriginalFov() {
+    if (!originalFov && Graph && Graph.camera) {
+      const cam = Graph.camera()
+      if (cam && cam.fov) originalFov = cam.fov
+    }
+  }
+
+  function animateCameraFov(targetFov, duration = 800, onDone) {
+    ensureOriginalFov()
+    const cam = Graph.camera && Graph.camera()
+    if (!cam) return
+    const startFov = cam.fov
+    const startTime = performance.now()
+
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    }
+
+    function step(now) {
+      const elapsed = now - startTime
+      const t = Math.min(elapsed / duration, 1)
+      const k = easeInOutQuad(t)
+      cam.fov = startFov + (targetFov - startFov) * k
+      cam.updateProjectionMatrix()
+      if (t < 1) requestAnimationFrame(step)
+      else if (onDone) onDone()
+    }
+
+    requestAnimationFrame(step)
+  }
+
+  // 第二層專用：以 FOV 變焦並將目標置中
+  function zoomToNodeByFovSub(node, { targetFov = 22, duration = 1000, offsetX = 0, offsetY = 0 } = {}) {
+    ensureOriginalFov()
+    const controls = Graph.controls && Graph.controls()
+    if (controls && node) {
+      controls.target.set(node.x + offsetX, node.y + offsetY, node.z)
+      controls.update()
+    }
+    animateCameraFov(targetFov, duration)
+  }
+
+  function resetFov(duration = 600) {
+    if (!originalFov) return
+    animateCameraFov(originalFov, duration)
+  }
+
+  // 依目標佔比自動計算 FOV，讓節點約佔視窗高度的 fillRatio（預設 0.7）
+  function zoomToNodeByFovFillSub(node, { fillRatio = 0.7, duration = 1000, offsetX = 0, offsetY = 0 } = {}) {
+    ensureOriginalFov()
+    const cam = Graph.camera && Graph.camera()
+    const controls = Graph.controls && Graph.controls()
+    if (!cam || !controls || !node) return
+
+    // 置中目標
+    controls.target.set(node.x + offsetX, node.y + offsetY, node.z)
+    controls.update()
+
+    // 估算節點在世界座標的高度
+    let objHeight = 30
+    const obj = node.__threeObj
+    if (obj && obj.scale && typeof obj.scale.y === 'number') {
+      objHeight = Math.abs(obj.scale.y) || objHeight
+    }
+
+    // 當前相機到目標距離
+    const d = cam.position.distanceTo(new THREE.Vector3(node.x, node.y, node.z))
+
+    // 由佔比反推 FOV：visibleHeight = 2 * d * tan(FOV/2)
+    // fillRatio = objHeight / visibleHeight => FOV = 2 * atan((objHeight / fillRatio) / (2*d))
+    const targetFovRad = 2 * Math.atan((objHeight / fillRatio) / (2 * d))
+    let targetFovDeg = THREE.MathUtils.radToDeg(targetFovRad)
+    // 合理界限，避免過度極端
+    targetFovDeg = Math.max(5, Math.min(75, targetFovDeg))
+
+    animateCameraFov(targetFovDeg, duration)
+  }
+
+  // 保證佔比：同時調整 FOV 與相機距離（沿視線方向 dolly），確保約 fillRatio 佔比
+  function zoomToNodeByFillGuaranteeSub(node, { fillRatio = 0.5, targetFov = 18, duration = 800, offsetX = 0, offsetY = 0 } = {}) {
+    ensureOriginalFov()
+    const cam = Graph.camera && Graph.camera()
+    const controls = Graph.controls && Graph.controls()
+    if (!cam || !controls || !node) return
+
+    const target = new THREE.Vector3(node.x + offsetX, node.y + offsetY, node.z)
+    controls.target.copy(target)
+    controls.update()
+
+    // 估算物件世界高度（優先使用世界座標包圍盒），fallback 30
+    let objHeight = 30
+    const obj = node.__threeObj
+    if (obj) {
+      try {
+        const box = new THREE.Box3().setFromObject(obj)
+        const size = new THREE.Vector3()
+        box.getSize(size)
+        if (isFinite(size.y) && size.y > 0) objHeight = size.y
+      } catch (_) {
+        // ignore
+      }
+      if (objHeight === 30 && obj.scale && typeof obj.scale.y === 'number') {
+        objHeight = Math.abs(obj.scale.y) || objHeight
+      }
+    }
+
+    const startCam = cam.position.clone()
+    const dir = new THREE.Vector3().subVectors(startCam, target).normalize()
+
+    // 預設目標 FOV
+    const fovRad = THREE.MathUtils.degToRad(targetFov)
+    // 需要的距離以達到 fillRatio：visibleHeight = 2*d*tan(FOV/2)
+    const dNeeded = (objHeight / fillRatio) / (2 * Math.tan(fovRad / 2))
+    const endCam = target.clone().add(dir.multiplyScalar(dNeeded))
+
+    // 動畫：同時插值相機位置與 FOV
+    const startFov = cam.fov
+    const startTime = performance.now()
+    function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t }
+    function step(now) {
+      const t = Math.min((now - startTime) / duration, 1)
+      const k = easeInOutQuad(t)
+      cam.position.lerpVectors(startCam, endCam, k)
+      cam.fov = startFov + (targetFov - startFov) * k
+      cam.updateProjectionMatrix()
+      controls.target.copy(target)
+      controls.update()
+      if (t < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }
+
+  // 第二層專用：在既有變焦下，於不同卡片間移動時以平移方式移動鏡頭
+  function panCameraToNodeSub(node, { duration = 900, offsetX = 0, offsetY = 0 } = {}) {
+    const cam = Graph.camera && Graph.camera()
+    const controls = Graph.controls && Graph.controls()
+    if (!cam || !controls || !node) return
+
+    const startCam = cam.position.clone()
+    const startTarget = controls.target.clone()
+    const endTarget = new THREE.Vector3(node.x + offsetX, node.y + offsetY, node.z)
+    const delta = new THREE.Vector3().subVectors(endTarget, startTarget)
+
+    const startTime = performance.now()
+
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    }
+
+    function step(now) {
+      const t = Math.min((now - startTime) / duration, 1)
+      const k = easeInOutQuad(t)
+
+      const curDelta = delta.clone().multiplyScalar(k)
+      const curCamPos = startCam.clone().add(curDelta)
+      const curTarget = startTarget.clone().add(curDelta)
+
+      cam.position.copy(curCamPos)
+      controls.target.copy(curTarget)
+      controls.update()
+
+      if (t < 1) requestAnimationFrame(step)
+    }
+
+    requestAnimationFrame(step)
+  }
+
   function handleNodeClick(node, textures) {
     if (currentLayer === 'main' && node.type === 'image' && node.children) {
       // 防止重複點擊
@@ -514,26 +771,57 @@
       }, 1500); // 與鏡頭移動時間對齊
       
     } else if (currentLayer === 'sub' && node.type === 'image') {
-      const baseScale = { x: 40, y: 30, z: 1 };
-      const targetScale = { x: baseScale.x * 1.3, y: baseScale.y * 1.3, z: baseScale.z };
-
-      // Shrink previous focused node
+      // 恢復上一個聚焦節點的深度（若有）
       if (focusedNode && focusedNode !== node && focusedNode.__threeObj) {
-        animateScale(focusedNode.__threeObj, baseScale);
+        resetNodeDepth(focusedNode)
       }
 
-      // Enlarge current node, only if it's not already focused
-      if (node !== focusedNode && node.__threeObj) {
-        animateScale(node.__threeObj, targetScale);
+      // 提升目前節點到最上層避免被遮擋
+      bringNodeToFront(node)
+
+      const moveDuration = 1000
+
+          if (focusedNode && focusedNode !== node) {
+        // 換目標：先平移，再做保證佔比變焦
+        lockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(false)
+        const panDuration = 800
+        panCameraToNodeSub(node, { duration: panDuration })
+        setTimeout(() => {
+          zoomToNodeByFillGuaranteeSub(node, { fillRatio: 0.5, targetFov: 18, duration: 700 })
+        }, panDuration + 10)
+        setTimeout(() => {
+          unlockNodes()
+          if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
+        }, panDuration + 750)
+      } else {
+        // 第一次或再次點同一張：直接做保證佔比變焦（無論目前多遠）
+        lockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(false)
+        zoomToNodeByFillGuaranteeSub(node, { fillRatio: 0.5, targetFov: 18, duration: 800 })
+        setTimeout(() => {
+          unlockNodes()
+          if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
+        }, 830)
       }
-      
-      focusedNode = node; // Update focused node
+
+      // 設定目前聚焦節點
+      focusedNode = node
     }
   }
 
   function setupBackButton() {
     document.getElementById('back-button').addEventListener('click', () => {
       if (currentLayer === 'sub') {
+        // 在返回前恢復目前聚焦卡片的深度
+        if (focusedNode && focusedNode.__threeObj) {
+          resetNodeDepth(focusedNode)
+        }
+        // 恢復原始 FOV，避免保留變焦狀態
+        resetFov(500)
+        // 保險：解除可能殘留的鎖定並恢復拖曳
+        unlockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
         transitionToLayer(() => loadMainLayer(originalData));
       }
     });
@@ -542,16 +830,21 @@
   function setupResetButton() {
     document.getElementById('reset-button').addEventListener('click', () => {
       if (currentLayer === 'sub') {
+        // 先將目前聚焦的節點恢復深度
+        if (focusedNode && focusedNode.__threeObj) {
+          resetNodeDepth(focusedNode)
+        }
+        // 恢復原始 FOV
+        resetFov(500)
+        // 保險：解除可能殘留的鎖定並恢復拖曳
+        unlockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
         // Reset sub layer - stay in sub layer but reset its state
         transitionToLayer(() => loadSubLayer(currentParent));
         
         // Reset camera to a closer position for sub layer
         setTimeout(() => {
-          Graph.cameraPosition(
-            { x: 0, y: 0, z: 300 }, // Closer camera position for sub layer
-            { x: 0, y: 0, z: 0 },   // Look at center
-            1000 // Transition duration
-          );
+          resetCamera(300, 1000)
         }, 100);
       } else {
         // Reset main layer
@@ -559,11 +852,7 @@
         
         // Reset camera position to closer default view for main layer
         setTimeout(() => {
-          Graph.cameraPosition(
-            { x: 0, y: 0, z: 350 }, // Closer camera position for main layer
-            { x: 0, y: 0, z: 0 },   // Look at center
-            1000 // Transition duration
-          );
+          resetCamera(350, 1000)
         }, 100);
       }
       
