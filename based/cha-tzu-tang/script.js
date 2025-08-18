@@ -47,7 +47,30 @@ const domControlEvents = {
         state.locationsEl.classList.add('invisible')
     },
     toggleDisplayLocationCardList: (isShow) => {
-        isShow ? state.locationsEl.classList.remove("invisible") : state.locationsEl.classList.add("invisible")
+        if (!state.locationsEl) return
+        
+        if (isShow) {
+            // 淡入效果
+            state.locationsEl.classList.remove("invisible")
+            gsap.fromTo(state.locationsEl, 
+                { opacity: 0 }, 
+                { 
+                    opacity: 1, 
+                    duration: 0.5, 
+                    ease: "power2.out" 
+                }
+            )
+        } else {
+            // 淡出效果
+            gsap.to(state.locationsEl, {
+                opacity: 0,
+                duration: 0.3,
+                ease: "power2.in",
+                onComplete: () => {
+                    state.locationsEl.classList.add("invisible")
+                }
+            })
+        }
     },
     toggleDisplayLocationCards: (sectionId) => {
         if (!sectionId) {
@@ -241,7 +264,7 @@ const scrollTriggerEvents = {
         if (adjustedProgress.currentIndex === -1) {
             // 初始狀態或從初始狀態過渡中
             activeStep = { type: 'init' }
-        } else if (adjustedProgress.lerpFactor < 0.5) {
+        } else if (adjustedProgress.lerpFactor < 0.01) {
             // 更接近當前步驟
             activeStep = stepData[adjustedProgress.currentIndex]
         } else {
@@ -251,39 +274,25 @@ const scrollTriggerEvents = {
         
         if (!activeStep) return
         
-        // 檢查是否正在離開某個 section 的最後一個 location
-        const isLeavingLastLocation = scrollTriggerEvents.isLeavingLastLocationOfSection(adjustedProgress, stepData)
+        // 判斷當前應該顯示卡片的狀態
+        const shouldShowCards = activeStep.type === 'location'
         
-        if (isLeavingLastLocation) {
-            // 正在離開某個 section 的最後一個 location，關閉卡片
+        // 檢查當前實際的顯示狀態
+        const isCurrentlyShowing = !state.locationsEl.classList.contains('invisible')
+        
+        // 狀態不一致時進行修正
+        if (shouldShowCards && !isCurrentlyShowing) {
+            // 應該顯示但目前隱藏 → 顯示卡片
+            scrollTriggerEvents.updateSidebar(activeStep)
+        } else if (!shouldShowCards && isCurrentlyShowing) {
+            // 應該隱藏但目前顯示 → 隱藏卡片
             domControlEvents.toggleDisplayLocationCardList(false)
             domControlEvents.closePinsPopup()
             state.curSectionId = null
-        } else {
-            // 正常更新側邊欄
+        } else if (shouldShowCards && isCurrentlyShowing) {
+            // 都是顯示狀態，更新卡片內容
             scrollTriggerEvents.updateSidebar(activeStep)
         }
-    },
-    isLeavingLastLocationOfSection: (adjustedProgress, stepData) => {
-        // 檢查是否正在從某個 section 的最後一個 location 離開
-        if (adjustedProgress.currentIndex < 0 || adjustedProgress.nextIndex >= stepData.length) {
-            return false
-        }
-        
-        const currentStep = stepData[adjustedProgress.currentIndex]
-        const nextStep = stepData[adjustedProgress.nextIndex]
-        
-        if (!currentStep || !nextStep) return false
-        
-        // 如果當前步驟是 location 且是該 section 的最後一個，而下一步驟不是同 section 的 location
-        if (currentStep.type === 'location' && scrollTriggerEvents.isLastLocationStep(currentStep)) {
-            // 檢查是否正在過渡到下一步驟（lerpFactor > 0.1 表示更接近下一步驟）
-            if (adjustedProgress.lerpFactor > 0.05) {
-                return true
-            }
-        }
-        
-        return false
     },
     calculateStepProgressWithInit: (scrollProgress, totalSteps, pauseRatio, transitionRatio) => {
         // 總共有 totalSteps + 1 個狀態（包含初始狀態）
