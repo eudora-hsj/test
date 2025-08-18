@@ -16,8 +16,13 @@ const state = {
     stepData: [],
     locationsObj: {},
     curSectionId: null,
-    markers: {}
+    markers: {},
+    isMobile: false
 
+}
+
+const isMobileDevice = () => {
+    return window.innerWidth <= 768
 }
 
 const domControlEvents = {
@@ -49,39 +54,68 @@ const domControlEvents = {
     toggleDisplayLocationCardList: (isShow) => {
         if (!state.locationsEl) return
         
+        const isMobile = isMobileDevice()
+        
         if (isShow) {
-            // 淡入效果
-            state.locationsEl.classList.remove("invisible")
-            gsap.fromTo(state.locationsEl, 
-                { opacity: 0 }, 
-                { 
-                    opacity: 1, 
-                    duration: 0.5, 
-                    ease: "power2.out" 
-                }
-            )
+            if (isMobile) {
+                // 手機版：直接顯示，不使用動畫
+                state.locationsEl.classList.remove("invisible")
+                state.locationsEl.style.opacity = "1"
+            } else {
+                // PC版：保持淡入效果
+                state.locationsEl.classList.remove("invisible")
+                gsap.fromTo(state.locationsEl, 
+                    { opacity: 0 }, 
+                    { 
+                        opacity: 1, 
+                        duration: 0.5, 
+                        ease: "power2.out" 
+                    }
+                )
+            }
         } else {
-            // 淡出效果
-            gsap.to(state.locationsEl, {
-                opacity: 0,
-                duration: 0.3,
-                ease: "power2.in",
-                onComplete: () => {
-                    state.locationsEl.classList.add("invisible")
-                }
-            })
+            if (isMobile) {
+                // 手機版：直接隱藏，不使用動畫
+                state.locationsEl.classList.add("invisible")
+                state.locationsEl.style.opacity = "0"
+            } else {
+                // PC版：保持淡出效果
+                gsap.to(state.locationsEl, {
+                    opacity: 0,
+                    duration: 0.3,
+                    ease: "power2.in",
+                    onComplete: () => {
+                        state.locationsEl.classList.add("invisible")
+                    }
+                })
+            }
         }
     },
-    toggleDisplayLocationCards: (sectionId) => {
+    toggleDisplayLocationCards: (sectionId, activeLocationId = null) => {
         if (!sectionId) {
             domControlEvents.toggleDisplayLocationCardList(false)
         } else {
             domControlEvents.toggleDisplayLocationCardList(true)
 
+            const isMobile = isMobileDevice()
+            
             state.locationEls.forEach(el => {
                 el.classList.remove('active')
-                if (el.getAttribute('data-section') == sectionId) {
-                    el.classList.remove('hidden')
+                const elSectionId = el.getAttribute('data-section')
+                const elLocationId = el.id.replace('location-', '')
+                
+                if (elSectionId == sectionId) {
+                    if (isMobile) {
+                        // 手機版：只顯示當前激活的卡片
+                        if (activeLocationId && elLocationId == activeLocationId) {
+                            el.classList.remove('hidden')
+                        } else {
+                            el.classList.add('hidden')
+                        }
+                    } else {
+                        // PC版：顯示該區域所有卡片
+                        el.classList.remove('hidden')
+                    }
                 } else {
                     el.classList.add('hidden')
                 }
@@ -99,7 +133,12 @@ const domControlEvents = {
                 inner.className = 'marker-inner'
                 el.appendChild(inner)
 
-                const popup = new mapboxgl.Popup({offset: 25})
+                const popup = new mapboxgl.Popup({
+                    offset: 25,
+                    closeButton: false, // 根據需要設定是否顯示關閉按鈕
+                    closeOnClick: false, // 根據需要設定是否點擊地圖時關閉 Popup
+                    anchor: 'bottom' // 將 Popup 固定在點的上方
+                })
                     .setHTML(`
                     <h3>${location.title}</h3>
                 `)
@@ -145,11 +184,17 @@ const domControlEvents = {
         if (selectedLocation && state.locationsEl) {
             state.locationEls.forEach(el => el.classList.remove('active'))
             selectedLocation.classList.add('active')
-            gsap.to(state.locationsEl, {
-                duration: 0.8,
-                scrollTo: {y: selectedLocation, offsetY: 70},
-                ease: "power2.inOut"
-            })
+            
+            const isMobile = isMobileDevice()
+            if (!isMobile) {
+                // PC版：垂直捲動到當前卡片
+                gsap.to(state.locationsEl, {
+                    duration: 0.8,
+                    scrollTo: {y: selectedLocation, offsetY: 70},
+                    ease: "power2.inOut"
+                })
+            }
+            // 手機版不需要捲動，因為只顯示一張卡片
         }
     },
 }
@@ -393,7 +438,14 @@ const scrollTriggerEvents = {
             // 先確保該地點所屬區域的卡片已顯示
             if (!state.curSectionId || state.curSectionId !== step.data.sectionId) {
                 state.curSectionId = step.data.sectionId
-                domControlEvents.toggleDisplayLocationCards(step.data.sectionId)
+                // 傳遞當前地點 ID 給 toggleDisplayLocationCards
+                domControlEvents.toggleDisplayLocationCards(step.data.sectionId, step.data.id)
+            } else {
+                // 如果已經是同一個區域，只需要更新顯示的卡片（手機版）
+                const isMobile = isMobileDevice()
+                if (isMobile) {
+                    domControlEvents.toggleDisplayLocationCards(step.data.sectionId, step.data.id)
+                }
             }
             
             // 高亮當前地點卡片
@@ -433,17 +485,19 @@ const scrollTriggerEvents = {
                 const bounds = new mapboxgl.LngLatBounds()
                 locations.forEach(location => bounds.extend(location.position))
                 const center = bounds.getCenter()
+                const isMobile = isMobileDevice()
                 return {
                     center: [center.lng, center.lat],
                     zoom: 10,
-                    offset: [0, 0]
+                    offset: isMobile ? [0, 120] : [0, 0] // 手機版向下偏移，PC版不偏移
                 }
             }
         } else if (step.type === 'location') {
+            const isMobile = isMobileDevice()
             return {
                 center: step.data.position,
-                zoom: 12,
-                offset: [150, 0] // location 需要向左偏移適應右側版面
+                zoom: 11.5, // 輕微 zoom in
+                offset: isMobile ? [0, 120] : [150, 0] // 手機版向下偏移，PC版向左偏移
             }
         }
         

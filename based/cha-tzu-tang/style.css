@@ -19,17 +19,6 @@ body {
     display: none;
 }
 
-.map-location {
-    margin-bottom: 30px;
-    padding: 26px;
-    height: 300px;
-    background-color: #333;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid transparent;
-    color: #aaa;
-}
 
 .map-location.active {
     color: #fff;
@@ -57,11 +46,6 @@ body {
     border: 5px solid #fff;
 }
 
-.mapboxgl-popup {
-}
-
-.mapboxgl-popup.popup-zoomed {
-}
 
 .mapboxgl-popup-content {
     padding: 10px 20px;
@@ -69,4 +53,43 @@ body {
     background-color: #FFF;
     color: #444;
     font-size: 15px;
+}
+
+.map-location {
+    margin-bottom: 30px;
+    padding: 26px;
+    height: 300px;
+    background-color: #333;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    color: #aaa;
+}
+
+/* 手機版響應式設計 */
+@media (max-width: 768px) {
+    #map-locations {
+        /* 手機版：卡片容器在頂部 */
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-height: 240px !important;
+        padding: 20px !important;
+        z-index: 10;
+    }
+    
+    .map-location {
+        /* 手機版：卡片樣式調整 */
+        margin-bottom: 0;
+        height: 180px;
+        padding: 16px;
+    }
+    
+    .map-location.hidden {
+        /* 手機版：隱藏非當前卡片 */
+        display: none !important;
+    }
 }
