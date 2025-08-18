@@ -771,6 +771,12 @@
       }, 1500); // 與鏡頭移動時間對齊
       
     } else if (currentLayer === 'sub' && node.type === 'image') {
+      // 若目前節點已是 active 且具備 url，則開啟對應連結
+      if (focusedNode === node && node.url) {
+        // 在新分頁開啟
+        window.open(node.url, '_blank')
+        return
+      }
       // 恢復上一個聚焦節點的深度（若有）
       if (focusedNode && focusedNode !== node && focusedNode.__threeObj) {
         resetNodeDepth(focusedNode)
