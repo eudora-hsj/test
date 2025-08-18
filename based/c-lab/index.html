@@ -327,11 +327,17 @@
     Graph.graphData(data);
 
     // Apply original layer configurations
+    // 第一層恢復較長的冷卻 tick，保有原本的力導引收斂效果
+    Graph.warmupTicks(0);
+    Graph.cooldownTicks(300);
     Graph.d3Force('charge').strength(-300);
     Graph.d3Force('link').distance(150);
     Graph.d3Force('z', forceZ(0).strength(0.1));
     Graph.d3Force('collide', forceCollide(55));
     Graph.d3Force('radial', forceRadial(300, 0, 0, 0).strength(0.02));
+
+    // 回到第一層時重置相機位置，確保視角一致
+    resetCamera(350, 800);
   }
 
   function loadSubLayer(parentNode, textures) {
@@ -368,6 +374,9 @@
     Graph.d3Force('z', forceZ(0).strength(0.1));
     Graph.d3Force('collide', forceCollide(45));
     Graph.d3Force('radial', forceRadial(200, 0, 0, 0).strength(0.03));
+
+    // 進入第二層時重置相機位置，確保視角一致
+    resetCamera(300, 800);
   }
 
   function fadeInNodes() {
@@ -390,6 +399,41 @@
         requestAnimationFrame(animate);
       } else {
         isTransitioning = false; // Transition complete
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // 將目前圖上的節點做淡出動畫
+  function fadeOutNodes(onComplete, duration = 350) {
+    const { nodes } = Graph.graphData();
+    const startTime = Date.now();
+    const startOpacities = new Map();
+
+    nodes.forEach(node => {
+      const mat = node.__threeObj && node.__threeObj.material;
+      const start = mat ? (typeof mat.opacity === 'number' ? mat.opacity : 1) : 1;
+      startOpacities.set(node, start);
+    });
+
+    function animate() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const opacity = 1 - progress;
+
+      nodes.forEach(node => {
+        const mat = node.__threeObj && node.__threeObj.material;
+        if (mat) {
+          const start = startOpacities.get(node) ?? 1;
+          mat.opacity = Math.max(0, start * opacity);
+        }
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        if (typeof onComplete === 'function') onComplete();
       }
     }
 
@@ -429,9 +473,46 @@
     animate();
   }
 
+  // 共用：重置相機到指定 z 距離並看向指定點
+  function resetCamera(z = 300, duration = 800, lookAt = { x: 0, y: 0, z: 0 }) {
+    Graph.cameraPosition(
+      { x: 0, y: 0, z },
+      lookAt,
+      duration
+    );
+  }
+
   function handleNodeClick(node, textures) {
     if (currentLayer === 'main' && node.type === 'image' && node.children) {
-      transitionToLayer(() => loadSubLayer(node, textures));
+      // 防止重複點擊
+      if (isTransitioning) return;
+      isTransitioning = true;
+      
+      // 先移動鏡頭聚焦到被點擊的卡片
+      const nodePosition = node;
+      const cameraDistance = 200; // 聚焦時的鏡頭距離
+      
+      // 計算鏡頭位置（稍微偏移以獲得更好的視角）
+      const cameraPosition = {
+        x: nodePosition.x + 50,
+        y: nodePosition.y + 30,
+        z: nodePosition.z + cameraDistance
+      };
+      
+      // 鏡頭移動到節點位置
+      Graph.cameraPosition(
+        cameraPosition,
+        { x: nodePosition.x, y: nodePosition.y, z: nodePosition.z }, // 看向節點
+        1400 // 放慢鏡頭移動時間，讓 zoom in 更平滑
+      );
+      
+      // 等待鏡頭移動完成後，先淡出第一層，再切換並淡入第二層
+      setTimeout(() => {
+        fadeOutNodes(() => {
+          transitionToLayer(() => loadSubLayer(node, textures));
+        }, 350);
+      }, 1500); // 與鏡頭移動時間對齊
+      
     } else if (currentLayer === 'sub' && node.type === 'image') {
       const baseScale = { x: 40, y: 30, z: 1 };
       const targetScale = { x: baseScale.x * 1.3, y: baseScale.y * 1.3, z: baseScale.z };
