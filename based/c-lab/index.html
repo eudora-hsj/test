@@ -371,9 +371,9 @@
     Graph.d3Force('charge').strength(-300);
     Graph.d3Force('link').distance(150);
     Graph.d3Force('z', forceZ(0).strength(0.1));
-    Graph.d3Force('collide', forceCollide(55));
+    Graph.d3Force('collide', forceCollide(60));
     Graph.d3Force('radial', forceRadial(300, 0, 0, 0).strength(0.02));
-
+    
     // 回到第一層時重置相機位置，確保視角一致
     resetCamera(350, 800);
   }
