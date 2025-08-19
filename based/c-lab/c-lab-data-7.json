@@ -1,0 +1,127 @@
+{
+  "nodes": [
+    { "id": "center", "name": "文化實驗 你來定義", "type": "text_box" },
+    {
+      "id": "node1",
+      "name": "當代採集一自然裡的人文滋味",
+      "type": "image",
+      "img": "./imgs/c-lab-img-1.jpg",
+      "children": [
+        { "id": "node1_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node1_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node1_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node1_4", "name": "2022", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    {
+      "id": "node2",
+      "name": "未來視覺實驗室",
+      "type": "image",
+      "img": "./imgs/c-lab-img-2.jpg",
+      "children": [
+        { "id": "node2_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_4", "name": "2022", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_5", "name": "2021", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    {
+      "id": "node3",
+      "name": "當代藝術實驗平台年度計畫",
+      "type": "image",
+      "img": "./imgs/c-lab-img-3.jpg",
+      "children": [
+        { "id": "node3_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node3_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node3_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    {
+      "id": "node4",
+      "name": "林茲電子藝術節——「異響共聲」",
+      "type": "image",
+      "img": "./imgs/c-lab-img-4.jpg",
+      "children": [
+        { "id": "node4_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node4_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node4_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node4_4", "name": "2022", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    {
+      "id": "node5",
+      "name": "臺灣聲響實驗室",
+      "type": "image",
+      "img": "./imgs/c-lab-img-5.jpg",
+      "children": [
+        { "id": "node5_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_4", "name": "2022", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_5", "name": "2021", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    {
+      "id": "node6",
+      "name": "聲音冥想：穿越聲音與寧靜的旅程",
+      "type": "image",
+      "img": "./imgs/c-lab-img-6.jpg",
+      "children": [
+        { "id": "node5_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_4", "name": "2022", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_5", "name": "2021", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    {
+      "id": "node7",
+      "name": "玩聚場藝術節|甜蜜點 SWEET SPOT",
+      "type": "image",
+      "img": "./imgs/c-lab-img-7.jpg",
+      "children": [
+        { "id": "node5_1", "name": "2025", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_2", "name": "2024", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_3", "name": "2023", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_4", "name": "2022", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_5", "name": "2021", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_6", "name": "2020", "type": "image", "img": "./imgs/c-lab-img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_7", "name": "2019", "type": "image", "img": "./imgs/c-lab-img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_8", "name": "2018", "type": "image", "img": "./imgs/c-lab-img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_9", "name": "2017", "type": "image", "img": "./imgs/c-lab-img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_10", "name": "2016", "type": "image", "img": "./imgs/c-lab-img-4.jpg", "url": "https://www.google.com/" }
+      ]
+    }
+  ],
+  "links": [
+    { "source": "center", "target": "node1" },
+    { "source": "center", "target": "node2" },
+    { "source": "center", "target": "node3" },
+    { "source": "center", "target": "node4" },
+    { "source": "center", "target": "node5" },
+    { "source": "center", "target": "node6" },
+    { "source": "center", "target": "node7" },
+    { "source": "node1", "target": "node2" },
+    { "source": "node1", "target": "node3" },
+    { "source": "node1", "target": "node4" },
+    { "source": "node1", "target": "node5" },
+    { "source": "node1", "target": "node6" },
+    { "source": "node1", "target": "node7" },
+    { "source": "node2", "target": "node3" },
+    { "source": "node2", "target": "node4" },
+    { "source": "node2", "target": "node5" },
+    { "source": "node2", "target": "node6" },
+    { "source": "node2", "target": "node7" },
+    { "source": "node3", "target": "node4" },
+    { "source": "node3", "target": "node5" },
+    { "source": "node3", "target": "node6" },
+    { "source": "node3", "target": "node7" },
+    { "source": "node4", "target": "node5" },
+    { "source": "node4", "target": "node6" },
+    { "source": "node4", "target": "node7" },
+    { "source": "node5", "target": "node6" },
+    { "source": "node5", "target": "node7" },
+    { "source": "node6", "target": "node7" }
+  ]
+}

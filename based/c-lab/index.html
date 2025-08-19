@@ -71,7 +71,8 @@
   let focusedNode = null; // Track currently focused node
   let isTransitioning = false; // Track if we're in a transition
 
-  fetch('./c-lab-data.json').then(res => res.json()).then(data => {
+  fetch('./c-lab-data-7.json').then(res => res.json()).then(data => {
+  //fetch('./c-lab-data-5.json').then(res => res.json()).then(data => {
     originalData = data;
 
     // Preload all images (including child images)
