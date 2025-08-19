@@ -347,6 +347,11 @@
     currentLayer = 'main';
     currentParent = null;
     document.getElementById('back-button').style.display = 'none';
+    // 清除第二層的聚焦狀態，避免回到第一層仍保留 focus
+    if (focusedNode && focusedNode.__threeObj) {
+      resetNodeDepth(focusedNode)
+    }
+    focusedNode = null
 
     // Fix center node to position 0,0,0
     const centerNode = data.nodes.find(n => n.id === 'center');
@@ -776,6 +781,8 @@
       // 防止重複點擊
       if (isTransitioning) return;
       isTransitioning = true;
+      // 提升被點擊的第一層卡片到最上層，避免被其他卡片遮擋
+      bringNodeToFront(node)
       
       // 先移動鏡頭聚焦到被點擊的卡片
       const nodePosition = node;
