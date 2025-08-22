@@ -1,0 +1,83 @@
+{
+  "nodes": [
+    { "id": "center", "name": "CoWorking Space", "type": "text_box" },
+    { 
+      "id": "node1", 
+      "name": "Room5", 
+      "type": "image", 
+      "img": "./imgs/img-1.jpg",
+      "children": [
+        { "id": "node1_1", "name": "", "type": "image", "img": "./imgs/img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node1_2", "name": "", "type": "image", "img": "./imgs/img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node1_3", "name": "", "type": "image", "img": "./imgs/img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node1_4", "name": "", "type": "image", "img": "./imgs/img-4.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    { 
+      "id": "node2", 
+      "name": "Room1", 
+      "type": "image", 
+      "img": "./imgs/img-2.jpg",
+      "children": [
+        { "id": "node2_1", "name": "", "type": "image", "img": "./imgs/img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_2", "name": "", "type": "image", "img": "./imgs/img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_3", "name": "", "type": "image", "img": "./imgs/img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_4", "name": "", "type": "image", "img": "./imgs/img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node2_5", "name": "", "type": "image", "img": "./imgs/img-1.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    { 
+      "id": "node3", 
+      "name": "Room2", 
+      "type": "image", 
+      "img": "./imgs/img-3.jpg",
+      "children": [
+        { "id": "node3_1", "name": "", "type": "image", "img": "./imgs/img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node3_2", "name": "", "type": "image", "img": "./imgs/img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node3_3", "name": "", "type": "image", "img": "./imgs/img-5.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    { 
+      "id": "node4", 
+      "name": "Room3", 
+      "type": "image", 
+      "img": "./imgs/img-4.jpg",
+      "children": [
+        { "id": "node4_1", "name": "", "type": "image", "img": "./imgs/img-4.jpg", "url": "https://www.google.com/" },
+        { "id": "node4_2", "name": "", "type": "image", "img": "./imgs/img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node4_3", "name": "", "type": "image", "img": "./imgs/img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node4_4", "name": "", "type": "image", "img": "./imgs/img-2.jpg", "url": "https://www.google.com/" }
+      ]
+    },
+    { 
+      "id": "node5", 
+      "name": "Room4", 
+      "type": "image", 
+      "img": "./imgs/img-5.jpg",
+      "children": [
+        { "id": "node5_1", "name": "", "type": "image", "img": "./imgs/img-5.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_2", "name": "", "type": "image", "img": "./imgs/img-1.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_3", "name": "", "type": "image", "img": "./imgs/img-2.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_4", "name": "", "type": "image", "img": "./imgs/img-3.jpg", "url": "https://www.google.com/" },
+        { "id": "node5_5", "name": "", "type": "image", "img": "./imgs/img-4.jpg", "url": "https://www.google.com/" }
+      ]
+    }
+  ],
+  "links": [
+    { "source": "center", "target": "node1" },
+    { "source": "center", "target": "node2" },
+    { "source": "center", "target": "node3" },
+    { "source": "center", "target": "node4" },
+    { "source": "center", "target": "node5" },
+    { "source": "node1", "target": "node2" },
+    { "source": "node1", "target": "node3" },
+    { "source": "node1", "target": "node4" },
+    { "source": "node1", "target": "node5" },
+    { "source": "node2", "target": "node3" },
+    { "source": "node2", "target": "node4" },
+    { "source": "node2", "target": "node5" },
+    { "source": "node3", "target": "node4" },
+    { "source": "node3", "target": "node5" },
+    { "source": "node4", "target": "node5" }
+  ]
+}

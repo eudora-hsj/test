@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <style>
+	  body { margin: 0; background-color: #000; font-family: Arial, sans-serif; }
+    #3d-graph {
+      transition: opacity 0.5s ease-in-out;
+    }
+	  #back-button {
+		  position: fixed;
+		  top: 20px;
+		  left: 20px;
+		  z-index: 1000;
+		  background: rgba(255, 255, 255, 0.9);
+		  border: 2px solid white;
+		  color: black;
+		  padding: 15px 25px;
+		  border-radius: 8px;
+		  cursor: pointer;
+		  font-size: 16px;
+		  font-weight: bold;
+		  display: none;
+		  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	  }
+	  #back-button:hover {
+		  background: white;
+	  }
+    #reset-button {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+	    background: #111;
+      border: none;
+      box-shadow: none;
+      outline: none;
+      color: white;
+      padding: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    #reset-button:hover {
+      background: #444;
+    }
+    /* Hide the control instructions text */
+    .scene-nav-info {
+      display: none !important;
+    }
+  </style>
+  
+  <script src="//cdn.jsdelivr.net/npm/3d-force-graph"></script>
+  <!--<script src="../../dist/3d-force-graph.js"></script>-->
+</head>
+
+<body>
+<div id="3d-graph"></div>
+<button id="back-button">Back</button>
+<button id="reset-button">Reset</button>
+
+<script type="module">
+  import * as THREE from 'https://esm.sh/three';
+  import SpriteText from "https://esm.sh/three-spritetext";
+  import { forceZ, forceCollide, forceRadial } from 'https://esm.sh/d3-force-3d';
+
+  let originalData = null;
+  let currentLayer = 'main';
+  let currentParent = null;
+  let Graph = null;
+  let focusedNode = null; // Track currently focused node
+  let isTransitioning = false; // Track if we're in a transition
+
+  //fetch('./data-7.json').then(res => res.json()).then(data => {
+  fetch('./data-5.json').then(res => res.json()).then(data => {
+    originalData = data;
+
+    // Preload all images (including child images)
+    const allImageUrls = [];
+    data.nodes.forEach(node => {
+      if (node.type === 'image' && node.img) {
+        allImageUrls.push(node.img);
+      }
+      if (node.children) {
+        node.children.forEach(child => {
+          if (child.type === 'image' && child.img) {
+            allImageUrls.push(child.img);
+          }
+        });
+      }
+    });
+
+    const textures = {};
+    const loadingManager = new THREE.LoadingManager();
+    const textureLoader = new THREE.TextureLoader(loadingManager);
+
+    allImageUrls.forEach(url => {
+      textureLoader.load(url, texture => {
+        textures[url] = texture;
+      });
+    });
+
+    loadingManager.onLoad = () => {
+      initGraph(data, textures);
+    };
+  });
+
+  function initGraph(data, textures) {
+    Graph = ForceGraph3D()
+    (document.getElementById('3d-graph'))
+    .backgroundColor('#000000')
+    .linkWidth(0.5)
+    .linkDirectionalParticles(2)
+    .nodeThreeObject(node => createNodeObject(node, textures))
+    .onNodeClick(node => handleNodeClick(node, textures))
+    .enableNodeDrag(true); // Explicitly enable node dragging
+
+    // Improve overall sharpness by matching renderer DPR (cap at 2 for perf)
+    try {
+      const renderer = Graph && Graph.renderer && Graph.renderer();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (renderer && renderer.setPixelRatio) renderer.setPixelRatio(dpr);
+      window.addEventListener('resize', () => {
+        const r = Graph && Graph.renderer && Graph.renderer();
+        if (r && r.setPixelRatio) r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      });
+    } catch (_) {}
+
+    loadMainLayer(data, textures);
+    setupBackButton();
+    setupResetButton();
+  }
+
+  function createTextureWithLabel(imgTexture, labelText) {
+    // Create a canvas to combine image and text
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Get original image dimensions
+    const originalWidth = imgTexture.image.width;
+    const originalHeight = imgTexture.image.height;
+    
+    // Fixed label dimensions (consistent across all images) in CSS pixels
+    const fixedLabelHeight = 60;
+    const fixedFontSize = 32;
+    const borderWidth = 3;
+    const blackBorderWidth = 9;
+    
+    // Calculate canvas size based on image aspect ratio but with fixed label height
+    const aspectRatio = originalWidth / originalHeight;
+    let canvasWidthCss, canvasHeightCss;
+    
+    if (aspectRatio > 1) {
+      // Landscape
+      canvasWidthCss = 512; // base width for image area
+      canvasHeightCss = Math.round(512 / aspectRatio) + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
+    } else {
+      // Portrait or square
+      canvasHeightCss = 448 + fixedLabelHeight + borderWidth * 2 + blackBorderWidth * 2;
+      canvasWidthCss = Math.max(256, Math.round(448 * aspectRatio));
+    }
+
+    // Measure label text at fixed font size and expand canvas to fit the full title (single line)
+    const padding = 10;
+    ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
+    const measuredTextWidth = labelText ? ctx.measureText(labelText).width : 0;
+    const desiredLabelWidth = labelText ? (measuredTextWidth + padding * 2) : 0;
+    const maxCanvasWidthCss = 2048; // safety cap to avoid huge textures
+    const baseImageWidthCss = canvasWidthCss; // lock image area width to base
+    canvasWidthCss = Math.min(maxCanvasWidthCss, Math.max(canvasWidthCss, desiredLabelWidth));
+    
+    // High-DPI rendering
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.floor(canvasWidthCss * dpr));
+    canvas.height = Math.max(1, Math.floor(canvasHeightCss * dpr));
+    ctx.scale(dpr, dpr);
+    
+    // Improve text rendering quality
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Draw the original image
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    return new Promise((resolve) => {
+      img.onload = () => {
+        // Calculate image area dimensions (CSS pixel space)
+        const imageAreaHeight = canvasHeightCss - fixedLabelHeight;
+        // Keep image/border width fixed to baseImageWidthCss so the image isn't stretched
+        const imageAreaWidth = baseImageWidthCss;
+        
+        // Fill background with white (thin outer border)
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, fixedLabelHeight, imageAreaWidth, imageAreaHeight);
+        
+        // Fill inner area with black (thick inner border)
+        ctx.fillStyle = 'black';
+        ctx.fillRect(borderWidth, fixedLabelHeight + borderWidth, 
+                    imageAreaWidth - borderWidth * 2, imageAreaHeight - borderWidth * 2);
+        
+        // Draw image with border space
+        const imageX = borderWidth + blackBorderWidth;
+        const imageY = fixedLabelHeight + borderWidth + blackBorderWidth;
+        const imageW = imageAreaWidth - (borderWidth + blackBorderWidth) * 2;
+        const imageH = imageAreaHeight - (borderWidth + blackBorderWidth) * 2;
+        
+        ctx.drawImage(img, imageX, imageY, imageW, imageH);
+        
+        // Add text label ABOVE the white frame (single-line, allow exceeding image width)
+        if (labelText) {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.font = `bold ${fixedFontSize}px Arial, sans-serif`;
+
+          const labelWidth = desiredLabelWidth;
+          const labelHeight = fixedLabelHeight;
+          const labelX = 0;
+          const labelY = 0;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(labelX, labelY, labelWidth, labelHeight);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+          ctx.fillText(labelText, labelX + padding, labelY + labelHeight / 2);
+          ctx.restore();
+        }
+        
+        // Create texture from canvas
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.generateMipmaps = true;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        try {
+          const renderer = (Graph && Graph.renderer) ? Graph.renderer() : null;
+          if (renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy) {
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          }
+        } catch (_) {}
+        resolve(texture);
+      };
+      
+      // Convert THREE texture to image
+      img.src = imgTexture.image.src;
+    });
+  }
+
+  function createNodeObject(node, textures) {
+    if (node.type === 'image') {
+      const imgTexture = textures[node.img];
+      if (!imgTexture) {
+        return new THREE.Object3D();
+      }
+      
+      // For nodes with children (first layer), create texture with label
+      if (node.children && node.children.length > 0 && node.name) {
+        // Use a placeholder for now, we'll update this asynchronously
+        const material = new THREE.SpriteMaterial({ 
+          map: imgTexture,
+          transparent: true, 
+          opacity: isTransitioning ? 0 : 1
+        });
+        const sprite = new THREE.Sprite(material);
+        // Temporary scale; will be updated after labeled texture arrives to keep aspect ratio
+        sprite.scale.set(60, 45);
+        
+        // Asynchronously create texture with label
+        createTextureWithLabel(imgTexture, node.name).then(labeledTexture => {
+          material.map = labeledTexture;
+          material.needsUpdate = true;
+          // Preserve aspect ratio based on texture size
+          const texW = labeledTexture.image.width;
+          const texH = labeledTexture.image.height;
+          const targetHeight = 55;
+          const targetWidth = targetHeight * (texW / texH);
+          sprite.scale.set(targetWidth, targetHeight, 1);
+        });
+        
+        return sprite;
+      } 
+      // For second layer nodes (children), also create texture with label if they have name
+      else if (node.name) {
+        // Use a placeholder for now, we'll update this asynchronously
+        const material = new THREE.SpriteMaterial({ 
+          map: imgTexture,
+          transparent: true, 
+          opacity: isTransitioning ? 0 : 1
+        });
+        const sprite = new THREE.Sprite(material);
+        // Temporary scale; will be updated after labeled texture arrives to keep aspect ratio
+        sprite.scale.set(40, 30);
+        
+        // Asynchronously create texture with label for second layer
+        createTextureWithLabel(imgTexture, node.name).then(labeledTexture => {
+          material.map = labeledTexture;
+          material.needsUpdate = true;
+          // Preserve aspect ratio based on texture size
+          const texW = labeledTexture.image.width;
+          const texH = labeledTexture.image.height;
+          const targetHeight = 38;
+          const targetWidth = targetHeight * (texW / texH);
+          sprite.scale.set(targetWidth, targetHeight, 1);
+        });
+        
+        return sprite;
+      }
+      else {
+        // Simple image without label
+        imgTexture.colorSpace = THREE.SRGBColorSpace;
+        const material = new THREE.SpriteMaterial({ 
+          map: imgTexture, 
+          transparent: true, 
+          opacity: isTransitioning ? 0 : 1
+        });
+        const sprite = new THREE.Sprite(material);
+        // Keep aspect ratio for pure image sprites
+        try {
+          const iw = imgTexture.image.width || 4;
+          const ih = imgTexture.image.height || 3;
+          const targetHeight = 30;
+          const targetWidth = targetHeight * (iw / ih);
+          sprite.scale.set(targetWidth, targetHeight, 1);
+        } catch (_) {
+          sprite.scale.set(40, 30);
+        }
+        return sprite;
+      }
+    } else if (node.type === 'text_box') {
+      const sprite = new SpriteText(node.name, 6, 'white');
+      sprite.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+      sprite.padding = [16, 8];
+      sprite.borderWidth = 2;
+      sprite.borderColor = 'white';
+      sprite.material.transparent = true;
+      sprite.material.opacity = 1;
+      return sprite;
+    }
+  }
+
+  function loadMainLayer(data, textures) {
+    currentLayer = 'main';
+    currentParent = null;
+    document.getElementById('back-button').style.display = 'none';
+    // 清除第二層的聚焦狀態，避免回到第一層仍保留 focus
+    if (focusedNode && focusedNode.__threeObj) {
+      resetNodeDepth(focusedNode)
+    }
+    focusedNode = null
+
+    // Fix center node to position 0,0,0
+    const centerNode = data.nodes.find(n => n.id === 'center');
+    if (centerNode) {
+      centerNode.fx = 0;
+      centerNode.fy = 0;
+      centerNode.fz = 0;
+    }
+
+    Graph.graphData(data);
+
+    // Apply original layer configurations
+    // 第一層恢復較長的冷卻 tick，保有原本的力導引收斂效果
+    Graph.warmupTicks(0);
+    Graph.cooldownTicks(300);
+    Graph.d3Force('charge').strength(-300);
+    Graph.d3Force('link').distance(150);
+    Graph.d3Force('z', forceZ(0).strength(0.1));
+    Graph.d3Force('collide', forceCollide(60));
+    Graph.d3Force('radial', forceRadial(300, 0, 0, 0).strength(0.02));
+    
+    // 回到第一層時重置相機位置，確保視角一致
+    resetCamera(350, 800);
+  }
+
+  function loadSubLayer(parentNode, textures) {
+    if (!parentNode.children || parentNode.children.length === 0) return;
+
+    currentLayer = 'sub';
+    currentParent = parentNode;
+    document.getElementById('back-button').style.display = 'block';
+
+    // Create sub-layer data with network connections (like main layer)
+    const children = parentNode.children;
+    const subLinks = [];
+
+    // Create all-to-all connections like in main layer
+    for (let i = 0; i < children.length; i++) {
+      for (let j = i + 1; j < children.length; j++) {
+        subLinks.push({
+          source: children[i].id,
+          target: children[j].id
+        });
+      }
+    }
+
+    const subData = {
+      nodes: [...children],
+      links: subLinks
+    };
+
+    Graph.graphData(subData);
+
+    // Apply sub-layer configurations similar to main layer
+    Graph.d3Force('charge').strength(-200);
+    Graph.d3Force('link').distance(120);
+    Graph.d3Force('z', forceZ(0).strength(0.1));
+    Graph.d3Force('collide', forceCollide(45));
+    Graph.d3Force('radial', forceRadial(200, 0, 0, 0).strength(0.03));
+
+    // 進入第二層時重置相機位置，確保視角一致
+    resetCamera(300, 800);
+  }
+
+  function fadeInNodes() {
+    const { nodes } = Graph.graphData();
+    const duration = 800;
+    const startTime = Date.now();
+
+    function animate() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const opacity = progress;
+
+      nodes.forEach(node => {
+        if (node.__threeObj && node.__threeObj.material) {
+          node.__threeObj.material.opacity = opacity;
+        }
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        isTransitioning = false; // Transition complete
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // 將目前圖上的節點做淡出動畫
+  function fadeOutNodes(onComplete, duration = 350) {
+    const { nodes } = Graph.graphData();
+    const startTime = Date.now();
+    const startOpacities = new Map();
+
+    nodes.forEach(node => {
+      const mat = node.__threeObj && node.__threeObj.material;
+      const start = mat ? (typeof mat.opacity === 'number' ? mat.opacity : 1) : 1;
+      startOpacities.set(node, start);
+    });
+
+    function animate() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const opacity = 1 - progress;
+
+      nodes.forEach(node => {
+        const mat = node.__threeObj && node.__threeObj.material;
+        if (mat) {
+          const start = startOpacities.get(node) ?? 1;
+          mat.opacity = Math.max(0, start * opacity);
+        }
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        if (typeof onComplete === 'function') onComplete();
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  function transitionToLayer(loadFunction) {
+    isTransitioning = true; // Mark that we're transitioning
+    
+    // Load new data immediately
+    loadFunction();
+    
+    // Then fade in the new nodes
+    setTimeout(() => {
+      fadeInNodes();
+    }, 50); // Smaller delay to reduce any flash
+  }
+
+  function animateScale(nodeObject, toScale) {
+    const startScale = { x: nodeObject.scale.x, y: nodeObject.scale.y, z: nodeObject.scale.z };
+    const duration = 600;
+    const startTime = Date.now();
+
+    function animate() {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const easeOut = 1 - Math.pow(1 - t, 2);
+
+      nodeObject.scale.set(
+        startScale.x + (toScale.x - startScale.x) * easeOut,
+        startScale.y + (toScale.y - startScale.y) * easeOut,
+        startScale.z + (toScale.z - startScale.z) * easeOut
+      );
+
+      if (t < 1) requestAnimationFrame(animate);
+    }
+    animate();
+  }
+
+  // 共用：重置相機到指定 z 距離並看向指定點
+  function resetCamera(z = 300, duration = 800, lookAt = { x: 0, y: 0, z: 0 }) {
+    Graph.cameraPosition(
+      { x: 0, y: 0, z },
+      lookAt,
+      duration
+    );
+  }
+
+  // 共用：鏡頭聚焦到指定節點（稍微偏移視角）
+  function focusCameraOnNode(node, {
+    distance = 200,
+    offsetX = 50,
+    offsetY = 30,
+    duration = 1000
+  } = {}) {
+    const nodePosition = node
+    const cameraPosition = {
+      x: nodePosition.x + offsetX,
+      y: nodePosition.y + offsetY,
+      z: nodePosition.z + distance
+    }
+    Graph.cameraPosition(
+      cameraPosition,
+      { x: nodePosition.x, y: nodePosition.y, z: nodePosition.z },
+      duration
+    )
+  }
+
+  // 第二層專用：鏡頭聚焦到指定節點（可獨立調整參數，不與第一層共用）
+  function focusCameraOnNodeSub(node, {
+    distance = 140,
+    offsetX = 40,
+    offsetY = 24,
+    duration = 1000
+  } = {}) {
+    const nodePosition = node
+    const cameraPosition = {
+      x: nodePosition.x + offsetX,
+      y: nodePosition.y + offsetY,
+      z: nodePosition.z + distance
+    }
+    Graph.cameraPosition(
+      cameraPosition,
+      { x: nodePosition.x, y: nodePosition.y, z: nodePosition.z },
+      duration
+    )
+  }
+
+  // 使節點永遠渲染在最上層（避免被擋住）
+  function bringNodeToFront(node) {
+    const obj = node && node.__threeObj
+    if (!obj) return
+    obj.renderOrder = 999
+    const mat = obj.material
+    if (mat) {
+      mat.depthTest = false
+      mat.depthWrite = false
+      mat.needsUpdate = true
+    }
+  }
+
+  // 恢復節點的深度測試設定
+  function resetNodeDepth(node) {
+    const obj = node && node.__threeObj
+    if (!obj) return
+    obj.renderOrder = 0
+    const mat = obj.material
+    if (mat) {
+      mat.depthTest = true
+      mat.depthWrite = true
+      mat.needsUpdate = true
+    }
+  }
+
+  // 在動畫期間固定所有節點位置，避免視覺上像被拖曳
+  function lockNodes() {
+    const data = Graph.graphData()
+    if (!data || !data.nodes) return
+    data.nodes.forEach(n => {
+      n.fx = n.x
+      n.fy = n.y
+      n.fz = n.z
+    })
+  }
+
+  function unlockNodes() {
+    const data = Graph.graphData()
+    if (!data || !data.nodes) return
+    data.nodes.forEach(n => {
+      n.fx = undefined
+      n.fy = undefined
+      n.fz = undefined
+    })
+  }
+
+  // 以 FOV 變焦，避免移動相機位置產生透視差
+  let originalFov = null
+
+  function ensureOriginalFov() {
+    if (!originalFov && Graph && Graph.camera) {
+      const cam = Graph.camera()
+      if (cam && cam.fov) originalFov = cam.fov
+    }
+  }
+
+  function animateCameraFov(targetFov, duration = 800, onDone) {
+    ensureOriginalFov()
+    const cam = Graph.camera && Graph.camera()
+    if (!cam) return
+    const startFov = cam.fov
+    const startTime = performance.now()
+
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    }
+
+    function step(now) {
+      const elapsed = now - startTime
+      const t = Math.min(elapsed / duration, 1)
+      const k = easeInOutQuad(t)
+      cam.fov = startFov + (targetFov - startFov) * k
+      cam.updateProjectionMatrix()
+      if (t < 1) requestAnimationFrame(step)
+      else if (onDone) onDone()
+    }
+
+    requestAnimationFrame(step)
+  }
+
+  // 第二層專用：以 FOV 變焦並將目標置中
+  function zoomToNodeByFovSub(node, { targetFov = 22, duration = 1000, offsetX = 0, offsetY = 0 } = {}) {
+    ensureOriginalFov()
+    const controls = Graph.controls && Graph.controls()
+    if (controls && node) {
+      controls.target.set(node.x + offsetX, node.y + offsetY, node.z)
+      controls.update()
+    }
+    animateCameraFov(targetFov, duration)
+  }
+
+  function resetFov(duration = 600) {
+    if (!originalFov) return
+    animateCameraFov(originalFov, duration)
+  }
+
+  // 依目標佔比自動計算 FOV，讓節點約佔視窗高度的 fillRatio（預設 0.7）
+  function zoomToNodeByFovFillSub(node, { fillRatio = 0.7, duration = 1000, offsetX = 0, offsetY = 0 } = {}) {
+    ensureOriginalFov()
+    const cam = Graph.camera && Graph.camera()
+    const controls = Graph.controls && Graph.controls()
+    if (!cam || !controls || !node) return
+
+    // 置中目標
+    controls.target.set(node.x + offsetX, node.y + offsetY, node.z)
+    controls.update()
+
+    // 估算節點在世界座標的高度
+    let objHeight = 30
+    const obj = node.__threeObj
+    if (obj && obj.scale && typeof obj.scale.y === 'number') {
+      objHeight = Math.abs(obj.scale.y) || objHeight
+    }
+
+    // 當前相機到目標距離
+    const d = cam.position.distanceTo(new THREE.Vector3(node.x, node.y, node.z))
+
+    // 由佔比反推 FOV：visibleHeight = 2 * d * tan(FOV/2)
+    // fillRatio = objHeight / visibleHeight => FOV = 2 * atan((objHeight / fillRatio) / (2*d))
+    const targetFovRad = 2 * Math.atan((objHeight / fillRatio) / (2 * d))
+    let targetFovDeg = THREE.MathUtils.radToDeg(targetFovRad)
+    // 合理界限，避免過度極端
+    targetFovDeg = Math.max(5, Math.min(75, targetFovDeg))
+
+    animateCameraFov(targetFovDeg, duration)
+  }
+
+  // 保證佔比：同時調整 FOV 與相機距離（沿視線方向 dolly），確保約 fillRatio 佔比
+  function zoomToNodeByFillGuaranteeSub(node, { fillRatio = 0.5, targetFov = 18, duration = 800, offsetX = 0, offsetY = 0 } = {}) {
+    ensureOriginalFov()
+    const cam = Graph.camera && Graph.camera()
+    const controls = Graph.controls && Graph.controls()
+    if (!cam || !controls || !node) return
+
+    const target = new THREE.Vector3(node.x + offsetX, node.y + offsetY, node.z)
+    controls.target.copy(target)
+    controls.update()
+
+    // 估算物件世界高度（優先使用世界座標包圍盒），fallback 30
+    let objHeight = 30
+    const obj = node.__threeObj
+    if (obj) {
+      try {
+        const box = new THREE.Box3().setFromObject(obj)
+        const size = new THREE.Vector3()
+        box.getSize(size)
+        if (isFinite(size.y) && size.y > 0) objHeight = size.y
+      } catch (_) {
+        // ignore
+      }
+      if (objHeight === 30 && obj.scale && typeof obj.scale.y === 'number') {
+        objHeight = Math.abs(obj.scale.y) || objHeight
+      }
+    }
+
+    const startCam = cam.position.clone()
+    const dir = new THREE.Vector3().subVectors(startCam, target).normalize()
+
+    // 預設目標 FOV
+    const fovRad = THREE.MathUtils.degToRad(targetFov)
+    // 需要的距離以達到 fillRatio：visibleHeight = 2*d*tan(FOV/2)
+    const dNeeded = (objHeight / fillRatio) / (2 * Math.tan(fovRad / 2))
+    const endCam = target.clone().add(dir.multiplyScalar(dNeeded))
+
+    // 動畫：同時插值相機位置與 FOV
+    const startFov = cam.fov
+    const startTime = performance.now()
+    function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t }
+    function step(now) {
+      const t = Math.min((now - startTime) / duration, 1)
+      const k = easeInOutQuad(t)
+      cam.position.lerpVectors(startCam, endCam, k)
+      cam.fov = startFov + (targetFov - startFov) * k
+      cam.updateProjectionMatrix()
+      controls.target.copy(target)
+      controls.update()
+      if (t < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }
+
+  // 第二層專用：在既有變焦下，於不同卡片間移動時以平移方式移動鏡頭
+  function panCameraToNodeSub(node, { duration = 900, offsetX = 0, offsetY = 0 } = {}) {
+    const cam = Graph.camera && Graph.camera()
+    const controls = Graph.controls && Graph.controls()
+    if (!cam || !controls || !node) return
+
+    const startCam = cam.position.clone()
+    const startTarget = controls.target.clone()
+    const endTarget = new THREE.Vector3(node.x + offsetX, node.y + offsetY, node.z)
+    const delta = new THREE.Vector3().subVectors(endTarget, startTarget)
+
+    const startTime = performance.now()
+
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    }
+
+    function step(now) {
+      const t = Math.min((now - startTime) / duration, 1)
+      const k = easeInOutQuad(t)
+
+      const curDelta = delta.clone().multiplyScalar(k)
+      const curCamPos = startCam.clone().add(curDelta)
+      const curTarget = startTarget.clone().add(curDelta)
+
+      cam.position.copy(curCamPos)
+      controls.target.copy(curTarget)
+      controls.update()
+
+      if (t < 1) requestAnimationFrame(step)
+    }
+
+    requestAnimationFrame(step)
+  }
+
+  function handleNodeClick(node, textures) {
+    if (currentLayer === 'main' && node.type === 'image' && node.children) {
+      // 防止重複點擊
+      if (isTransitioning) return;
+      isTransitioning = true;
+      // 提升被點擊的第一層卡片到最上層，避免被其他卡片遮擋
+      bringNodeToFront(node)
+      
+      // 先移動鏡頭聚焦到被點擊的卡片
+      const nodePosition = node;
+      const cameraDistance = 200; // 聚焦時的鏡頭距離
+      
+      // 計算鏡頭位置（稍微偏移以獲得更好的視角）
+      const cameraPosition = {
+        x: nodePosition.x + 50,
+        y: nodePosition.y + 30,
+        z: nodePosition.z + cameraDistance
+      };
+      
+      // 鏡頭移動到節點位置
+      Graph.cameraPosition(
+        cameraPosition,
+        { x: nodePosition.x, y: nodePosition.y, z: nodePosition.z }, // 看向節點
+        1400 // 放慢鏡頭移動時間，讓 zoom in 更平滑
+      );
+      
+      // 等待鏡頭移動完成後，先淡出第一層，再切換並淡入第二層
+      setTimeout(() => {
+        fadeOutNodes(() => {
+          transitionToLayer(() => loadSubLayer(node, textures));
+        }, 350);
+      }, 1500); // 與鏡頭移動時間對齊
+      
+    } else if (currentLayer === 'sub' && node.type === 'image') {
+      // 若目前節點已是 active 且具備 url，則開啟對應連結
+      if (focusedNode === node && node.url) {
+        // 在新分頁開啟
+        window.open(node.url, '_blank')
+        return
+      }
+      // 恢復上一個聚焦節點的深度（若有）
+      if (focusedNode && focusedNode !== node && focusedNode.__threeObj) {
+        resetNodeDepth(focusedNode)
+      }
+
+      // 提升目前節點到最上層避免被遮擋
+      bringNodeToFront(node)
+
+      const moveDuration = 1000
+
+          if (focusedNode && focusedNode !== node) {
+        // 換目標：先平移，再做保證佔比變焦
+        lockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(false)
+        const panDuration = 800
+        panCameraToNodeSub(node, { duration: panDuration })
+        setTimeout(() => {
+          zoomToNodeByFillGuaranteeSub(node, { fillRatio: 0.5, targetFov: 18, duration: 700 })
+        }, panDuration + 10)
+        setTimeout(() => {
+          unlockNodes()
+          if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
+        }, panDuration + 750)
+      } else {
+        // 第一次或再次點同一張：直接做保證佔比變焦（無論目前多遠）
+        lockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(false)
+        zoomToNodeByFillGuaranteeSub(node, { fillRatio: 0.5, targetFov: 18, duration: 800 })
+        setTimeout(() => {
+          unlockNodes()
+          if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
+        }, 830)
+      }
+
+      // 設定目前聚焦節點
+      focusedNode = node
+    }
+  }
+
+  function setupBackButton() {
+    document.getElementById('back-button').addEventListener('click', () => {
+      if (currentLayer === 'sub') {
+        // 在返回前恢復目前聚焦卡片的深度
+        if (focusedNode && focusedNode.__threeObj) {
+          resetNodeDepth(focusedNode)
+        }
+        // 恢復原始 FOV，避免保留變焦狀態
+        resetFov(500)
+        // 保險：解除可能殘留的鎖定並恢復拖曳
+        unlockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
+        transitionToLayer(() => loadMainLayer(originalData));
+      }
+    });
+  }
+
+  function setupResetButton() {
+    document.getElementById('reset-button').addEventListener('click', () => {
+      if (currentLayer === 'sub') {
+        // 先將目前聚焦的節點恢復深度
+        if (focusedNode && focusedNode.__threeObj) {
+          resetNodeDepth(focusedNode)
+        }
+        // 恢復原始 FOV
+        resetFov(500)
+        // 保險：解除可能殘留的鎖定並恢復拖曳
+        unlockNodes()
+        if (Graph.enableNodeDrag) Graph.enableNodeDrag(true)
+        // Reset sub layer - stay in sub layer but reset its state
+        transitionToLayer(() => loadSubLayer(currentParent));
+        
+        // Reset camera to a closer position for sub layer
+        setTimeout(() => {
+          resetCamera(300, 1000)
+        }, 100);
+      } else {
+        // Reset main layer
+        loadMainLayer(originalData);
+        
+        // Reset camera position to closer default view for main layer
+        setTimeout(() => {
+          resetCamera(350, 1000)
+        }, 100);
+      }
+      
+      // Reset focused node
+      focusedNode = null;
+    });
+  }
+</script>
+</body>
+</html>
