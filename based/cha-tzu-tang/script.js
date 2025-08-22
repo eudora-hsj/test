@@ -57,38 +57,12 @@ const domControlEvents = {
         const isMobile = isMobileDevice()
         
         if (isShow) {
-            if (isMobile) {
-                // 手機版：直接顯示，不使用動畫
-                state.locationsEl.classList.remove("invisible")
-                state.locationsEl.style.opacity = "1"
-            } else {
-                // PC版：保持淡入效果
-                state.locationsEl.classList.remove("invisible")
-                gsap.fromTo(state.locationsEl, 
-                    { opacity: 0 }, 
-                    { 
-                        opacity: 1, 
-                        duration: 0.5, 
-                        ease: "power2.out" 
-                    }
-                )
-            }
+            // 手機與桌機：直接顯示，不使用動畫
+            state.locationsEl.classList.remove("invisible")
+            state.locationsEl.style.opacity = "1"
         } else {
-            if (isMobile) {
-                // 手機版：直接隱藏，不使用動畫
-                state.locationsEl.classList.add("invisible")
-                state.locationsEl.style.opacity = "0"
-            } else {
-                // PC版：保持淡出效果
-                gsap.to(state.locationsEl, {
-                    opacity: 0,
-                    duration: 0.3,
-                    ease: "power2.in",
-                    onComplete: () => {
-                        state.locationsEl.classList.add("invisible")
-                    }
-                })
-            }
+            state.locationsEl.classList.add("invisible")
+            state.locationsEl.style.opacity = "0"
         }
     },
     toggleDisplayLocationCards: (sectionId, activeLocationId = null) => {
