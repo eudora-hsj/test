@@ -1,6 +1,6 @@
 {
   "nodes": [
-    { "id": "center", "name": "CoWorking Space", "type": "text_box" },
+    { "id": "center", "name": "Coworking Space", "type": "text_box" },
     { 
       "id": "node1", 
       "name": "Room5", 
