@@ -67,7 +67,7 @@ const domControlEvents = {
     },
     toggleDisplayLocationCards: (sectionId, activeLocationId = null) => {
         if (!sectionId) {
-            domControlEvents.toggleDisplayLocationCardList(false)
+            //domControlEvents.toggleDisplayLocationCardList(false)
         } else {
             domControlEvents.toggleDisplayLocationCardList(true)
 
@@ -78,7 +78,7 @@ const domControlEvents = {
                 const elSectionId = el.getAttribute('data-section')
                 const elLocationId = el.id.replace('location-', '')
                 
-                if (elSectionId == sectionId) {
+                //if (elSectionId == sectionId) {
                     if (isMobile) {
                         // 手機版：只顯示當前激活的卡片
                         if (activeLocationId && elLocationId == activeLocationId) {
@@ -90,9 +90,9 @@ const domControlEvents = {
                         // PC版：顯示該區域所有卡片
                         el.classList.remove('hidden')
                     }
-                } else {
-                    el.classList.add('hidden')
-                }
+                //} else {
+                //    el.classList.add('hidden')
+                //}
             })
 
         }
@@ -163,9 +163,9 @@ const domControlEvents = {
             if (!isMobile) {
                 // PC版：垂直捲動到當前卡片
                 gsap.to(state.locationsEl, {
-                    duration: 0.8,
+                    //duration: 0.8,
                     scrollTo: {y: selectedLocation, offsetY: 70},
-                    ease: "power2.inOut"
+                    //ease: "power2.inOut"
                 })
             }
             // 手機版不需要捲動，因為只顯示一張卡片
@@ -231,8 +231,8 @@ const scrollTriggerEvents = {
             pinSpacing: true, // 啟用pin間距
             snap: {
                 snapTo: 1 / (stepData.length - 1), // 使滾動可以停在每個step
-                duration: {min: 0.3, max: 1}, // 動畫持續時間範圍
-                ease: "power2.inOut" // 使用平滑的緩動函數
+                //duration: {min: 0.3, max: 1}, // 動畫持續時間範圍
+                //ease: "power2.inOut" // 使用平滑的緩動函數
             },
             animation: contentTimeline,
             anticipatePin: 1,
