@@ -5,6 +5,11 @@ body {
     color: #444;
 }
 
+/* 避免卡片清單的滾動串到視窗，干擾 ScrollTrigger */
+#map-locations {
+    overscroll-behavior: contain;
+}
+
 .mapboxgl-ctrl-top-right,
 .mapboxgl-ctrl-bottom-left,
 .mapboxgl-ctrl-bottom-right {
@@ -27,7 +32,8 @@ body {
 .marker {
     width: 30px;
     height: 30px;
-    pointer-events: none;
+    /* 需要讓 marker 可以接收點擊事件 */
+    pointer-events: auto;
 }
 
 .marker-inner {
@@ -78,6 +84,7 @@ body {
         max-height: 240px !important;
         padding: 20px !important;
         z-index: 10;
+        overscroll-behavior: contain;
     }
     
     .map-location {

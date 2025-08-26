@@ -1,7 +1,7 @@
 const mapConfig = {
     accessToken: 'pk.eyJ1IjoiZXVkb3JhZjJlIiwiYSI6ImNsa2lqNzgxcjBpZngzZm9hdG9jbHE2ZzUifQ.kiEOscst8hVf_N8psAW5tg',
-    style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
-    // style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
+    //style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
+     style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
 }
 
 const state = {
@@ -17,7 +17,10 @@ const state = {
     locationsObj: {},
     curSectionId: null,
     markers: {},
-    isMobile: false
+    isMobile: false,
+    // 使用者互動鎖定：避免 ScrollTrigger 在邊界把手動選擇覆寫掉
+    userHoldUntil: 0,
+    userSelectedLocationId: null
 
 }
 
@@ -125,7 +128,33 @@ const domControlEvents = {
 
                 state.markers[location.id] = marker
 
-                // el.addEventListener('click', () => handleEvent.onClickMarker(location))
+                // 點擊 marker 時：僅同步右側卡片與彈窗，不捲動主視窗
+                el.addEventListener('click', (e) => {
+                    // 阻止 Mapbox 預設的 popup toggle（先行於捕獲階段）
+                    e.preventDefault()
+                    e.stopPropagation()
+
+                    // 停止任何地圖移動動畫，避免位移
+                    if (map && typeof map.stop === 'function') {
+                        map.stop()
+                    }
+
+                    // 先關閉其他 popup
+                    domControlEvents.closePinsPopup()
+
+                    // 更新目前區域，並顯示對應卡片
+                    state.curSectionId = location.sectionId
+                    domControlEvents.toggleDisplayLocationCards(location.sectionId, location.id)
+                    // 高亮並在 PC 版卡片容器中平滑捲動至可視範圍
+                    domControlEvents.activeLocationCard(location.id)
+                    // 僅開啟自己的 popup
+                    const mk = state.markers[location.id]
+                    if (mk && mk.getPopup()) {
+                        mk.togglePopup()
+                    }
+                    // 在邊界時短暫鎖定側邊欄，避免被 ScrollTrigger 覆寫
+                    scrollTriggerEvents.holdSidebarByUser(location.id, 1200)
+                }, { capture: true })
                 popup.on('open', () => {
                     const popupElement = popup.getElement();
                     popupElement.classList.add('popup-zoomed');
@@ -278,6 +307,11 @@ const scrollTriggerEvents = {
 
     },
     handleSidebarVisibility: (adjustedProgress, stepData) => {
+        // 若在使用者手動點擊後的鎖定期間，避免被 ScrollTrigger 覆寫
+        const now = Date.now()
+        if (state.userHoldUntil && now < state.userHoldUntil) {
+            return
+        }
         // 決定當前應該顯示的步驟
         let activeStep = null
         
@@ -488,6 +522,38 @@ const scrollTriggerEvents = {
         domControlEvents.closePinsPopup()
         state.curSectionId = null
     },
+    // 使用者手動點擊鎖定側邊欄一段時間，避免邊界抖動覆寫
+    holdSidebarByUser: (locationId, ms = 1500) => {
+        state.userHoldUntil = Date.now() + ms
+        state.userSelectedLocationId = locationId
+    },
+    // 依據 locationId 捲動到對應的步驟中心
+    scrollToLocationStep: (locationId) => {
+        const st = ScrollTrigger.getById('main-scroll')
+        if (!st || !Array.isArray(state.stepData) || state.stepData.length === 0) return
+
+        // 找出第一個匹配的 location 步驟索引
+        const targetIndex = state.stepData.findIndex(step => step.type === 'location' && step.data && step.data.id === locationId)
+        if (targetIndex < 0) return
+
+        // 主滾動區間起迄（像素）
+        const start = st.start
+        const end = st.end
+
+        // 每個步驟對應 1 個視窗高度的滾動距離
+        const vh = window.innerHeight
+        let targetY = start + (targetIndex + 0.5) * vh
+
+        // 保險：限制在可滾動範圍內
+        targetY = Math.max(start, Math.min(targetY, end))
+
+        // 平滑捲動到對應步驟中心
+        gsap.to(window, {
+            scrollTo: targetY,
+            duration: 0.6,
+            ease: 'power2.inOut'
+        })
+    }
 }
 
 const fetchData = async () => {
