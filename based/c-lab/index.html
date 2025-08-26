@@ -126,6 +126,39 @@
       });
     } catch (_) {}
 
+    // 禁用右鍵與右鍵拖曳
+    try {
+      const controls = Graph && Graph.controls && Graph.controls()
+      if (controls) {
+        // 關閉平移（預設綁在右鍵）
+        controls.enablePan = false
+        // 明確移除右鍵動作，避免右鍵拖曳
+        if (controls.mouseButtons && typeof controls.mouseButtons === 'object') {
+          controls.mouseButtons.RIGHT = null
+        }
+      }
+    } catch (_) {}
+
+    // 在容器層阻止右鍵選單與右鍵拖曳事件
+    try {
+      const containerEl = document.getElementById('3d-graph')
+      if (containerEl) {
+        // 阻止右鍵選單
+        containerEl.addEventListener('contextmenu', e => e.preventDefault())
+        // 阻止右鍵按下與拖曳傳遞到 OrbitControls
+        const blockRight = e => {
+          if (e && e.button === 2) {
+            e.preventDefault()
+            e.stopPropagation()
+          }
+        }
+        containerEl.addEventListener('pointerdown', blockRight, true)
+        containerEl.addEventListener('mousedown', blockRight, true)
+        containerEl.addEventListener('auxclick', blockRight, true)
+        containerEl.addEventListener('dragstart', blockRight, true)
+      }
+    } catch (_) {}
+
     loadMainLayer(data, textures);
     setupBackButton();
     setupResetButton();
