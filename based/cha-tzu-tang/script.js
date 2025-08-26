@@ -103,6 +103,7 @@ const domControlEvents = {
             state.dataLocations.forEach(location => {
                 const el = document.createElement('div')
                 el.className = 'marker'
+                el.style.cursor = 'pointer' // 加入 pointer cursor
                 const inner = document.createElement('div')
                 inner.className = 'marker-inner'
                 el.appendChild(inner)
@@ -553,8 +554,13 @@ mapboxgl.accessToken = mapConfig.accessToken
 const map = new mapboxgl.Map({
     container: 'map',
     style: mapConfig.style,
-    dragPan: false,
-    ...mapControl.initMapPosition
+    center: mapControl.initMapPosition.center,
+    zoom: mapControl.initMapPosition.zoom,
+    scrollZoom: false,      // 禁用滾輪縮放
+    dragPan: false,         // 禁用拖曳平移
+    dragRotate: false,      // 禁用拖曳旋轉
+    doubleClickZoom: false, // 禁用雙擊縮放
+    touchZoomRotate: false, // 禁用觸控縮放與旋轉
 })
 map.addControl(new mapboxgl.NavigationControl())
 map.scrollZoom.disable()
