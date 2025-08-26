@@ -12,7 +12,16 @@
         z-index: 10;
 	      top: 0;
     }
+    /* 五角形錨點工具函式已移至 <script> 區塊 */
     .header {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid #666;
+        width: 85vw;
+        left: 50%;
+  	    position: absolute;
+        transform: translateX(-50%);
+        height: 60px;
+        top: 30px;
     }
     #section-content {
         height: 1000px;
@@ -20,8 +29,7 @@
         background: #fff;
     }
     #section-hero {
-        margin-top: 5vh;
-        height: 95vh;
+        height: 100vh;
         width: 100vw;
         position: relative;
     }
@@ -78,7 +86,6 @@
 <body>
 <div id="section-header">
   <div class="header">
-    header
   </div>
 </div>
 <div id="section-hero">
@@ -94,7 +101,30 @@
 <script type="module">
   import * as THREE from 'https://esm.sh/three';
   import SpriteText from "https://esm.sh/three-spritetext";
-  import { forceZ, forceCollide, forceRadial } from 'https://esm.sh/d3-force-3d';
+  import { forceZ, forceCollide, forceRadial, forceX, forceY } from 'https://esm.sh/d3-force-3d';
+
+  // 五角形錨點工具：根據節點穩定分配到五個頂點
+  function hashString(str) {
+    let h = 5381
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h) + str.charCodeAt(i)
+    return Math.abs(h)
+  }
+
+  function polygonAnchor(node, sides = 5, radius = 280) {
+    if (!node) return { x: 0, y: 0, z: 0 }
+    if (node.id === 'center') return { x: 0, y: 0, z: 0 }
+    if (node._polyIdx == null) {
+      const key = node.id != null ? String(node.id) : JSON.stringify(node)
+      node._polyIdx = hashString(key) % sides
+    }
+    const idx = node._polyIdx
+    const angle = (Math.PI * 2 * idx) / sides - Math.PI / 2
+    return {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+      z: 0
+    }
+  }
 
   let originalData = null;
   let currentLayer = 'main';
@@ -447,8 +477,14 @@
     Graph.d3Force('charge').strength(-300);
     Graph.d3Force('link').distance(150);
     Graph.d3Force('z', forceZ(0).strength(0.1));
-    Graph.d3Force('collide', forceCollide(60));
-    Graph.d3Force('radial', forceRadial(300, 0, 0, 0).strength(0.02));
+    Graph.d3Force('collide', forceCollide(50).iterations(1));
+    // 改用 X/Y 分力以形成較寬的長方形（移除圓形收斂）
+    Graph.d3Force('radial', null);
+    // 五角形 + 垂直壓縮，維持 5 個角同時變扁（約 16:9）
+    const mainPolyRadius = 600
+    const mainYScale = 4 / 16
+    Graph.d3Force('xBias', forceX(n => polygonAnchor(n, 5, mainPolyRadius).x).strength(0.09))
+    Graph.d3Force('yBias', forceY(n => polygonAnchor(n, 5, mainPolyRadius).y * mainYScale).strength(0.004))
     
     // 回到第一層時重置相機位置，確保視角一致
     resetCamera(350, 800);
@@ -483,11 +519,19 @@
     Graph.graphData(subData);
 
     // Apply sub-layer configurations similar to main layer
-    Graph.d3Force('charge').strength(-200);
-    Graph.d3Force('link').distance(120);
+    // 提高分散程度，減少重疊（第二層略小於第一層）
+    Graph.cooldownTicks(320);
+    Graph.d3Force('charge').strength(-340);
+    Graph.d3Force('link').distance(150);
     Graph.d3Force('z', forceZ(0).strength(0.1));
-    Graph.d3Force('collide', forceCollide(45));
-    Graph.d3Force('radial', forceRadial(200, 0, 0, 0).strength(0.03));
+    Graph.d3Force('collide', forceCollide(64).iterations(3));
+    // 改用 X/Y 分力：第二層再收斂一些、垂直更緊以維持扁平
+    Graph.d3Force('radial', null);
+    // 五角形 + 垂直壓縮（次層稍小，接近 16:9）
+    const subPolyRadius = 220
+    const subYScale = 9 / 16
+    Graph.d3Force('xBias', forceX(n => polygonAnchor(n, 5, subPolyRadius).x).strength(0.06))
+    Graph.d3Force('yBias', forceY(n => polygonAnchor(n, 5, subPolyRadius).y * subYScale).strength(0.06))
 
     // 進入第二層時重置相機位置，確保視角一致
     resetCamera(300, 800);
