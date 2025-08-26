@@ -73,6 +73,32 @@
     #reset-button:hover {
       background: #444;
     }
+    #lock-button {
+      position: absolute;
+      top: 150px;
+      right: 20px;
+      z-index: 1000;
+      background: #333;
+      border: none;
+      box-shadow: none;
+      outline: none;
+      color: white;
+      padding: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+    }
+    #lock-button:hover {
+      background: #555;
+    }
+    #lock-button.locked {
+      background: #999;
+      color: white;
+    }
+    #lock-button.locked:hover {
+      background: #777;
+    }
     /* Hide the control instructions text */
     .scene-nav-info {
       display: none !important;
@@ -92,6 +118,7 @@
   <div id="3d-graph"></div>
   <button id="back-button">返回上層</button>
   <button id="reset-button">總覽</button>
+  <button id="lock-button">上鎖</button>
 </div>
 
 <div id="section-content">
@@ -132,6 +159,7 @@
   let Graph = null;
   let focusedNode = null; // Track currently focused node
   let isTransitioning = false; // Track if we're in a transition
+  let isLocked = false; // Track canvas lock state
 
   fetch('./c-lab-data-7.json').then(res => res.json()).then(data => {
   //fetch('./c-lab-data-5.json').then(res => res.json()).then(data => {
@@ -235,6 +263,7 @@
     loadMainLayer(data, textures);
     setupBackButton();
     setupResetButton();
+    setupLockButton();
   }
 
   function createTextureWithLabel(imgTexture, labelText) {
@@ -908,6 +937,8 @@
   }
 
   function handleNodeClick(node, textures) {
+    if (isLocked) return; // 鎖定狀態下禁用節點點擊
+    
     if (currentLayer === 'main' && node.type === 'image' && node.children) {
       // 防止重複點擊
       if (isTransitioning) return;
@@ -988,6 +1019,8 @@
 
   function setupBackButton() {
     document.getElementById('back-button').addEventListener('click', () => {
+      if (isLocked) return; // 鎖定狀態下禁用返回功能
+      
       if (currentLayer === 'sub') {
         // 在返回前恢復目前聚焦卡片的深度
         if (focusedNode && focusedNode.__threeObj) {
@@ -1005,6 +1038,8 @@
 
   function setupResetButton() {
     document.getElementById('reset-button').addEventListener('click', () => {
+      if (isLocked) return; // 鎖定狀態下禁用重置功能
+      
       if (currentLayer === 'sub') {
         // 先將目前聚焦的節點恢復深度
         if (focusedNode && focusedNode.__threeObj) {
@@ -1035,6 +1070,70 @@
       // Reset focused node
       focusedNode = null;
     });
+  }
+
+  function setupLockButton() {
+    const lockButton = document.getElementById('lock-button');
+    
+    lockButton.addEventListener('click', () => {
+      isLocked = !isLocked;
+      
+      if (isLocked) {
+        lockButton.textContent = '解鎖';
+        lockButton.classList.add('locked');
+        // 禁用 canvas 的所有控制
+        disableCanvasControls();
+      } else {
+        lockButton.textContent = '上鎖';
+        lockButton.classList.remove('locked');
+        // 重新啟用 canvas 控制
+        enableCanvasControls();
+      }
+    });
+  }
+
+  function disableCanvasControls() {
+    try {
+      const controls = Graph && Graph.controls && Graph.controls();
+      if (controls) {
+        controls.enabled = false;
+      }
+      
+      // 禁用節點拖曳
+      if (Graph.enableNodeDrag) {
+        Graph.enableNodeDrag(false);
+      }
+      
+      // 阻止 canvas 上的所有滑鼠事件
+      const containerEl = document.getElementById('3d-graph');
+      if (containerEl) {
+        containerEl.style.pointerEvents = 'none';
+      }
+    } catch (e) {
+      console.warn('Error disabling canvas controls:', e);
+    }
+  }
+
+  function enableCanvasControls() {
+    try {
+      const controls = Graph && Graph.controls && Graph.controls();
+      if (controls) {
+        controls.enabled = true;
+      }
+      
+      // 重新啟用節點拖曳
+      if (Graph.enableNodeDrag) {
+        Graph.enableNodeDrag(true);
+      }
+      
+      // 恢復 canvas 上的滑鼠事件
+      const containerEl = document.getElementById('3d-graph');
+      if (containerEl) {
+        containerEl.style.pointerEvents = 'auto';
+      }
+    } catch (e) {
+      console.warn('Error enabling canvas controls:', e);
+    }
   }
 </script>
 </body>
