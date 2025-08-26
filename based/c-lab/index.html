@@ -808,7 +808,7 @@
     animateCameraFov(targetFovDeg, duration)
   }
 
-  // 保證佔比：同時調整 FOV 與相機距離（沿視線方向 dolly），確保約 fillRatio 佔比
+  // 保證佔比：同時調整 FOV 與相機距離，從當前位置平滑聚焦到目標
   function zoomToNodeByFillGuaranteeSub(node, { fillRatio = 0.5, targetFov = 18, duration = 800, offsetX = 0, offsetY = 0 } = {}) {
     ensureOriginalFov()
     const cam = Graph.camera && Graph.camera()
@@ -816,9 +816,7 @@
     if (!cam || !controls || !node) return
 
     const target = new THREE.Vector3(node.x + offsetX, node.y + offsetY, node.z)
-    controls.target.copy(target)
-    controls.update()
-
+    
     // 估算物件世界高度（優先使用世界座標包圍盒），fallback 30
     let objHeight = 30
     const obj = node.__threeObj
@@ -836,27 +834,39 @@
       }
     }
 
+    // 計算理想的相機位置：從目標點沿著目標到當前相機的方向延伸
     const startCam = cam.position.clone()
-    const dir = new THREE.Vector3().subVectors(startCam, target).normalize()
-
+    const startTarget = controls.target.clone()
+    
+    // 計算從目標到當前相機的方向向量
+    const dirToCamera = new THREE.Vector3().subVectors(startCam, target).normalize()
+    
     // 預設目標 FOV
     const fovRad = THREE.MathUtils.degToRad(targetFov)
     // 需要的距離以達到 fillRatio：visibleHeight = 2*d*tan(FOV/2)
     const dNeeded = (objHeight / fillRatio) / (2 * Math.tan(fovRad / 2))
-    const endCam = target.clone().add(dir.multiplyScalar(dNeeded))
+    const endCam = target.clone().add(dirToCamera.multiplyScalar(dNeeded))
 
-    // 動畫：同時插值相機位置與 FOV
+    // 動畫：同時插值相機位置、控制目標與 FOV
     const startFov = cam.fov
     const startTime = performance.now()
     function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t }
     function step(now) {
       const t = Math.min((now - startTime) / duration, 1)
       const k = easeInOutQuad(t)
+      
+      // 平滑插值相機位置
       cam.position.lerpVectors(startCam, endCam, k)
+      
+      // 平滑插值控制目標
+      const currentTarget = new THREE.Vector3().lerpVectors(startTarget, target, k)
+      controls.target.copy(currentTarget)
+      
+      // 平滑插值 FOV
       cam.fov = startFov + (targetFov - startFov) * k
       cam.updateProjectionMatrix()
-      controls.target.copy(target)
       controls.update()
+      
       if (t < 1) requestAnimationFrame(step)
     }
     requestAnimationFrame(step)
