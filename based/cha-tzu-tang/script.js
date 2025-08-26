@@ -1,7 +1,7 @@
 const mapConfig = {
     accessToken: 'pk.eyJ1IjoiZXVkb3JhZjJlIiwiYSI6ImNsa2lqNzgxcjBpZngzZm9hdG9jbHE2ZzUifQ.kiEOscst8hVf_N8psAW5tg',
-    //style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
-     style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
+    style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
+     //style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
 }
 
 const state = {
