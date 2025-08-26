@@ -4,11 +4,32 @@
   <meta charset="UTF-8">
   <style>
 	  body { margin: 0; background-color: #000; font-family: Arial, sans-serif; }
+    #section-header {
+        height: 5vh;
+        width: 100vw;
+        color: #fff;
+	      position: fixed;
+        z-index: 10;
+	      top: 0;
+    }
+    .header {
+    }
+    #section-content {
+        height: 1000px;
+        width: 100vw;
+        background: #fff;
+    }
+    #section-hero {
+        margin-top: 5vh;
+        height: 95vh;
+        width: 100vw;
+        position: relative;
+    }
     #3d-graph {
       transition: opacity 0.5s ease-in-out;
     }
 	  #back-button {
-		  position: fixed;
+		  position: absolute;
 		  top: 20px;
 		  left: 20px;
 		  z-index: 1000;
@@ -55,9 +76,20 @@
 </head>
 
 <body>
-<div id="3d-graph"></div>
-<button id="back-button">返回上層</button>
-<button id="reset-button">總覽</button>
+<div id="section-header">
+  <div class="header">
+    header
+  </div>
+</div>
+<div id="section-hero">
+  <div id="3d-graph"></div>
+  <button id="back-button">返回上層</button>
+  <button id="reset-button">總覽</button>
+</div>
+
+<div id="section-content">
+  content
+</div>
 
 <script type="module">
   import * as THREE from 'https://esm.sh/three';
@@ -137,6 +169,17 @@
           controls.mouseButtons.RIGHT = null
         }
       }
+      // Ensure the canvas strictly matches the hero section size (90vh)
+      const container = document.getElementById('3d-graph')
+      const hero = document.getElementById('section-hero')
+      const applyGraphSize = () => {
+        if (!Graph || !container) return
+        const w = (hero && hero.clientWidth) ? hero.clientWidth : container.clientWidth
+        const h = (hero && hero.clientHeight) ? hero.clientHeight : container.clientHeight
+        Graph.width(w).height(h)
+      }
+      applyGraphSize()
+      window.addEventListener('resize', applyGraphSize)
     } catch (_) {}
 
     // 在容器層阻止右鍵選單與右鍵拖曳事件
@@ -176,7 +219,7 @@
     // Fixed label dimensions (consistent across all images) in CSS pixels
     const fixedLabelHeight = 60;
     const fixedFontSize = 32;
-    const borderWidth = 3;
+    const borderWidth = 1;
     const blackBorderWidth = 9;
     
     // Calculate canvas size based on image aspect ratio but with fixed label height
