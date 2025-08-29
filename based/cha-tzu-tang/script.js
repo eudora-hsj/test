@@ -33,6 +33,14 @@ const mapControl = {
         zoom: 9,
         pitch: 0,
         bearing: 0,
+        offset: [0, 0]
+    },
+    userEnableRule: {
+        scrollZoom: false,      // 禁用滾輪縮放
+        dragPan: false,         // 禁用拖曳平移
+        dragRotate: false,      // 禁用拖曳旋轉
+        doubleClickZoom: false, // 禁用雙擊縮放
+        touchZoomRotate: false, // 禁用觸控縮放與旋轉
     },
     popupAttr:{
         offset: 25,
@@ -41,8 +49,8 @@ const mapControl = {
         anchor: 'bottom'     // Popup 固定在 Marker 的上方
     },
     closePinsPopup: () => {
-        Object.values(state.markers).forEach(m => {
-            if (m.getPopup().isOpen()) m.togglePopup()
+        Object.values(state.markers).forEach(marker => {
+            if (marker.getPopup().isOpen()) marker.togglePopup()
         })
     },
     openPinPopup: (locationId) => {
@@ -147,6 +155,7 @@ const uiControlEvents = {
         } else {
             state.locationsEl.classList.add("invisible")
             state.locationsEl.style.opacity = "0"
+            mapControl.closePinsPopup()
         }
     },
     toggleDisplayLocationCard: (sectionId, activeLocationId = null) => {
@@ -324,7 +333,7 @@ const scrollTriggerEvents = {
         } else if (!shouldShowCards && isCurrentlyShowing) {
             // 應該隱藏但目前顯示 → 隱藏卡片
             uiControlEvents.toggleDisplayLocationCardList(false)
-            mapControl.closePinsPopup()
+            //mapControl.closePinsPopup()
             state.curSectionId = null
         } else if (shouldShowCards && isCurrentlyShowing) {
             // 都是顯示狀態，更新卡片內容
@@ -466,9 +475,8 @@ const scrollTriggerEvents = {
         if (step.type === 'init') {
             // 初始狀態
             return {
-                center: mapControl.initMapPosition.center,
-                zoom: mapControl.initMapPosition.zoom,
-                offset: [0, 0]
+                ...mapControl.initMapPosition,
+                //offset: [0, 0]
             }
         } else if (step.type === 'section') {
             const locations = state.locationsObj[step.data.id]
@@ -507,6 +515,7 @@ const scrollTriggerEvents = {
     },
     // 使用者手動點擊鎖定側邊欄一段時間，避免邊界抖動覆寫
     holdSidebarByUser: (locationId, ms = 1500) => {
+        return
         state.userHoldUntil = Date.now() + ms
         state.userSelectedLocationId = locationId
     },
@@ -603,13 +612,8 @@ mapboxgl.accessToken = mapConfig.accessToken
 const map = new mapboxgl.Map({
     container: 'map',
     style: mapConfig.style,
-    center: mapControl.initMapPosition.center,
-    zoom: mapControl.initMapPosition.zoom,
-    scrollZoom: false,      // 禁用滾輪縮放
-    dragPan: false,         // 禁用拖曳平移
-    dragRotate: false,      // 禁用拖曳旋轉
-    doubleClickZoom: false, // 禁用雙擊縮放
-    touchZoomRotate: false, // 禁用觸控縮放與旋轉
+    ...mapControl.initMapPosition,
+    ...mapControl.userEnableRule
 })
 map.addControl(new mapboxgl.NavigationControl())
 map.scrollZoom.disable()
