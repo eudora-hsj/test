@@ -1,7 +1,7 @@
 const mapConfig = {
     accessToken: 'pk.eyJ1IjoiZXVkb3JhZjJlIiwiYSI6ImNsa2lqNzgxcjBpZngzZm9hdG9jbHE2ZzUifQ.kiEOscst8hVf_N8psAW5tg',
-    //style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
-     style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
+    style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
+     //style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
 }
 
 const state = {
@@ -24,7 +24,9 @@ const state = {
     // 目前觸發中的離散步驟索引
     activeStepIndex: -1,
     // 上一幀捲動進度，用於判斷方向與邊界遲滯
-    lastProgress: 0
+    lastProgress: 0,
+    // 阻止 snap 觸發的時間戳
+    preventSnapUntil: 0
 
 }
 
@@ -38,56 +40,6 @@ const mapControl = {
         pitch: 0,
         bearing: 0,
         offset: [0, 0]
-    },
-    // 連續插值更新地圖狀態：支援 init → 第一步的過渡
-    updateMapByProgress: (progress, stepData) => {
-        const totalSteps = stepData.length
-        if (totalSteps === 0) return
-
-        // totalStates = steps + init
-        const totalStates = totalSteps + 1
-        const stepSize = 1 / (totalStates - 1) // = 1 / totalSteps
-
-        // 找出目前所在的狀態區段（包含 init）
-        const seg = Math.min(Math.floor(progress / stepSize), totalStates - 2) // 0..totalSteps-1
-        const localT = Math.min(Math.max((progress - seg * stepSize) / stepSize, 0), 1)
-
-        // 對應到步驟索引：current = seg-1 (-1 表 init), next = current+1
-        const currentIdx = seg - 1
-        const nextIdx = Math.min(currentIdx + 1, totalSteps - 1)
-
-        // 取得目標狀態
-        const currentTarget = currentIdx < 0
-            ? { ...mapControl.initMapPosition }
-            : scrollTriggerEvents.getMapTarget(stepData[currentIdx])
-        // 可能遇到沒有目標（如 location-extended），用當前目標回退避免跳動
-        const nextTarget = scrollTriggerEvents.getMapTarget(stepData[nextIdx]) || currentTarget
-
-        if (!currentTarget || !nextTarget) return
-
-        // 簡單線性插值
-        const lerp = (a, b, t) => a + (b - a) * t
-        const lerpArr2 = (a, b, t) => [
-            lerp(a[0], b[0], t),
-            lerp(a[1], b[1], t)
-        ]
-
-        const center = lerpArr2(currentTarget.center, nextTarget.center, localT)
-        const zoom = lerp(
-            currentTarget.zoom ?? map.getZoom(),
-            nextTarget.zoom ?? map.getZoom(),
-            localT
-        )
-        const offset = lerpArr2(
-            currentTarget.offset || [0, 0],
-            nextTarget.offset || [0, 0],
-            localT
-        )
-
-        const offsetCenter = scrollTriggerEvents.calculateOffsetCenter(center, offset, zoom)
-        // 直接設置相機以追隨捲動
-        map.setCenter(offsetCenter)
-        map.setZoom(zoom)
     },
     userEnableRule: {
         scrollZoom: false,      // 禁用滾輪縮放
@@ -115,6 +67,56 @@ const mapControl = {
         }
     },
 
+    // 連續插值更新地圖狀態：支援 init → 第一步的過渡
+    updateMapByProgress: (progress, stepData) => {
+        const totalSteps = stepData.length
+        if (totalSteps === 0) return
+
+        // totalStates = steps + init
+        const totalStates = totalSteps + 1
+        const stepSize = 1 / (totalStates - 1) // = 1 / totalSteps
+
+        // 找出目前所在的狀態區段（包含 init）
+        const seg = Math.min(Math.floor(progress / stepSize), totalStates - 2) // 0..totalSteps-1
+        const localT = Math.min(Math.max((progress - seg * stepSize) / stepSize, 0), 1)
+
+        // 對應到步驟索引：current = seg-1 (-1 表 init), next = current+1
+        const currentIdx = seg - 1
+        const nextIdx = Math.min(currentIdx + 1, totalSteps - 1)
+
+        // 取得目標狀態
+        const currentTarget = currentIdx < 0
+          ? { ...mapControl.initMapPosition }
+          : scrollTriggerEvents.getMapTarget(stepData[currentIdx])
+        // 可能遇到沒有目標（如 location-extended），用當前目標回退避免跳動
+        const nextTarget = scrollTriggerEvents.getMapTarget(stepData[nextIdx]) || currentTarget
+
+        if (!currentTarget || !nextTarget) return
+
+        // 簡單線性插值
+        const lerp = (a, b, t) => a + (b - a) * t
+        const lerpArr2 = (a, b, t) => [
+            lerp(a[0], b[0], t),
+            lerp(a[1], b[1], t)
+        ]
+
+        const center = lerpArr2(currentTarget.center, nextTarget.center, localT)
+        const zoom = lerp(
+          currentTarget.zoom ?? map.getZoom(),
+          nextTarget.zoom ?? map.getZoom(),
+          localT
+        )
+        const offset = lerpArr2(
+          currentTarget.offset || [0, 0],
+          nextTarget.offset || [0, 0],
+          localT
+        )
+
+        const offsetCenter = scrollTriggerEvents.calculateOffsetCenter(center, offset, zoom)
+        // 直接設置相機以追隨捲動
+        map.setCenter(offsetCenter)
+        map.setZoom(zoom)
+    },
     // resetPinPopupState: () => {
     //
     // },
@@ -247,6 +249,9 @@ const onClickEvents = {
         e.preventDefault()
         e.stopPropagation()
         if (!state.curSectionId) return
+        // 阻止吸附功能
+        state.preventSnapUntil = Date.now() + 1000
+        
         mapControl.closePinsPopup()
         mapControl.openPinPopup(locationId)
         uiControlEvents.activeLocationCard(locationId)
@@ -287,6 +292,27 @@ const scrollTriggerEvents = {
             pinSpacing: true, // 啟用pin間距
             animation: contentTimeline,
             anticipatePin: 1,
+            // 使用 ScrollTrigger 內建的 snap 功能實現吸附效果
+            snap: {
+                snapTo: (progress) => {
+                    // 檢查是否在阻止 snap 的時間內
+                    if (Date.now() < state.preventSnapUntil) {
+                        return progress // 返回當前進度，不進行 snap
+                    }
+                    
+                    // 計算最接近的步驟節點（包含 init 狀態）
+                    const totalSteps = stepData.length
+                    const totalStates = totalSteps + 1 // steps + init
+                    const stepSize = 1 / (totalStates - 1)
+                    
+                    // 找到最接近的節點
+                    const nearestIndex = Math.round(progress / stepSize)
+                    return Math.min(Math.max(nearestIndex * stepSize, 0), 1)
+                },
+                duration: {min: 0.1, max: 0.2}, // 吸附動畫持續時間範圍
+                delay: 100, // 停止滾動後的延遲時間
+                ease: "none" // 吸附動畫的緩動函數
+            },
             onUpdate: (self) => {
                 // 1) 連續插值：地圖隨捲動平滑移動
                 const progress = self.progress
