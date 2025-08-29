@@ -1,7 +1,7 @@
 const mapConfig = {
     accessToken: 'pk.eyJ1IjoiZXVkb3JhZjJlIiwiYSI6ImNsa2lqNzgxcjBpZngzZm9hdG9jbHE2ZzUifQ.kiEOscst8hVf_N8psAW5tg',
-    style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
-     //style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
+    //style: 'mapbox://styles/baseddesign/ckzqqk061002u15n71253c5bc',
+     style: 'mapbox://styles/eudoraf2e/cmdimb31e03nu01r46cq12ouk',
 }
 
 const state = {
@@ -20,7 +20,11 @@ const state = {
     isMobile: false,
     // 使用者互動鎖定：避免 ScrollTrigger 在邊界把手動選擇覆寫掉
     userHoldUntil: 0,
-    userSelectedLocationId: null
+    userSelectedLocationId: null,
+    // 目前觸發中的離散步驟索引
+    activeStepIndex: -1,
+    // 上一幀捲動進度，用於判斷方向與邊界遲滯
+    lastProgress: 0
 
 }
 
@@ -34,6 +38,56 @@ const mapControl = {
         pitch: 0,
         bearing: 0,
         offset: [0, 0]
+    },
+    // 連續插值更新地圖狀態：支援 init → 第一步的過渡
+    updateMapByProgress: (progress, stepData) => {
+        const totalSteps = stepData.length
+        if (totalSteps === 0) return
+
+        // totalStates = steps + init
+        const totalStates = totalSteps + 1
+        const stepSize = 1 / (totalStates - 1) // = 1 / totalSteps
+
+        // 找出目前所在的狀態區段（包含 init）
+        const seg = Math.min(Math.floor(progress / stepSize), totalStates - 2) // 0..totalSteps-1
+        const localT = Math.min(Math.max((progress - seg * stepSize) / stepSize, 0), 1)
+
+        // 對應到步驟索引：current = seg-1 (-1 表 init), next = current+1
+        const currentIdx = seg - 1
+        const nextIdx = Math.min(currentIdx + 1, totalSteps - 1)
+
+        // 取得目標狀態
+        const currentTarget = currentIdx < 0
+            ? { ...mapControl.initMapPosition }
+            : scrollTriggerEvents.getMapTarget(stepData[currentIdx])
+        // 可能遇到沒有目標（如 location-extended），用當前目標回退避免跳動
+        const nextTarget = scrollTriggerEvents.getMapTarget(stepData[nextIdx]) || currentTarget
+
+        if (!currentTarget || !nextTarget) return
+
+        // 簡單線性插值
+        const lerp = (a, b, t) => a + (b - a) * t
+        const lerpArr2 = (a, b, t) => [
+            lerp(a[0], b[0], t),
+            lerp(a[1], b[1], t)
+        ]
+
+        const center = lerpArr2(currentTarget.center, nextTarget.center, localT)
+        const zoom = lerp(
+            currentTarget.zoom ?? map.getZoom(),
+            nextTarget.zoom ?? map.getZoom(),
+            localT
+        )
+        const offset = lerpArr2(
+            currentTarget.offset || [0, 0],
+            nextTarget.offset || [0, 0],
+            localT
+        )
+
+        const offsetCenter = scrollTriggerEvents.calculateOffsetCenter(center, offset, zoom)
+        // 直接設置相機以追隨捲動
+        map.setCenter(offsetCenter)
+        map.setZoom(zoom)
     },
     userEnableRule: {
         scrollZoom: false,      // 禁用滾輪縮放
@@ -231,165 +285,90 @@ const scrollTriggerEvents = {
             pin: true,
             scrub: 1.5, // 增加scrub值使滾動更平滑
             pinSpacing: true, // 啟用pin間距
-            snap: {
-                snapTo: 1 / (stepData.length - 1), // 使滾動可以停在每個step
-                //duration: {min: 0.3, max: 1}, // 動畫持續時間範圍
-                //ease: "power2.inOut" // 使用平滑的緩動函數
-            },
             animation: contentTimeline,
             anticipatePin: 1,
             onUpdate: (self) => {
-                // 邊捲動邊平滑移動地圖，帶有幀間停頓，包含初始狀態
-                const scrollProgress = self.progress
-                const totalSteps = stepData.length
-                
-                if (totalSteps === 0) return
-                
-                // 定義每個步驟的停頓比例
-                const pauseRatio = 0.4
-                const transitionRatio = 1 - pauseRatio
-                
-                // 計算考慮停頓的步驟進度，包含初始狀態作為第 0 步
-                const adjustedProgress = scrollTriggerEvents.calculateStepProgressWithInit(scrollProgress, totalSteps, pauseRatio, transitionRatio)
-                
-                //console.log(`捲動進度: ${Math.round(scrollProgress * 100)}%, 調整後進度: ${adjustedProgress.currentIndex}-${adjustedProgress.nextIndex}, 插值: ${adjustedProgress.lerpFactor.toFixed(2)}`)
-                
-                // 處理側邊欄顯示邏輯
-                scrollTriggerEvents.handleSidebarVisibility(adjustedProgress, stepData)
-                
-                // 處理從初始狀態到第一步驟的過渡
-                if (adjustedProgress.currentIndex === -1) {
-                    // 從初始狀態過渡到第一個步驟
-                    const initState = { type: 'init' }
-                    const firstStep = stepData[0]
-                    if (firstStep) {
-                        scrollTriggerEvents.interpolateMapPosition(initState, firstStep, adjustedProgress.lerpFactor)
-                    }
-                } else {
-                    // 步驟之間的正常過渡
-                    const currentStep = stepData[adjustedProgress.currentIndex]
-                    const nextStep = stepData[adjustedProgress.nextIndex]
-                    
-                    if (currentStep && nextStep) {
-                        scrollTriggerEvents.interpolateMapPosition(currentStep, nextStep, adjustedProgress.lerpFactor)
+                // 1) 連續插值：地圖隨捲動平滑移動
+                const progress = self.progress
+                const total = stepData.length
+                if (total === 0) return
+                mapControl.updateMapByProgress(progress, stepData)
+
+                // 2) 離散 UI：只在跨越中點時更新側欄與彈窗，不移動地圖
+                const index = scrollTriggerEvents.getDiscreteIndex(progress, total, state.activeStepIndex, state.lastProgress)
+                if (index !== state.activeStepIndex) {
+                    state.activeStepIndex = index
+                    if (index === -1) {
+                        scrollTriggerEvents.toInit()
+                    } else {
+                        const step = stepData[index]
+                        if (step) scrollTriggerEvents.updateSidebar(step)
                     }
                 }
+
+                // 3) 記錄上一幀進度
+                state.lastProgress = progress
             }
         })
 
     },
-    handleSidebarVisibility: (adjustedProgress, stepData) => {
-        // 若在使用者手動點擊後的鎖定期間，避免被 ScrollTrigger 覆寫
-        const now = Date.now()
-        if (state.userHoldUntil && now < state.userHoldUntil) {
-            return
+    // 計算離散步驟索引，具備邊界遲滯避免抖動
+    getDiscreteIndex: (progress, total, prevIndex, lastProgress) => {
+        // 單一步驟直接返回 0
+        if (total <= 1) return 0
+
+        // 每步的等分寬度
+        const stepSpan = 1 / (total - 1)
+
+        // 遲滯帶寬度（百分比），可依體感微調
+        const hysteresis = 0.06 * stepSpan
+
+        // 判斷捲動方向
+        const forward = progress - lastProgress >= 0
+
+        // 兩種方向的邊界函式
+        const boundaryUp = i => (i + 0.5) * stepSpan
+        const boundaryDown = i => (i - 0.5) * stepSpan
+
+        // init 與 step0 之間的判斷
+        if (prevIndex < 0) {
+            const b0 = 0.5 * stepSpan
+            if (forward) return progress > b0 + hysteresis ? 0 : -1
+            return progress < b0 - hysteresis ? -1 : 0
         }
-        // 決定當前應該顯示的步驟
-        let activeStep = null
-        
-        if (adjustedProgress.currentIndex === -1) {
-            // 初始狀態或從初始狀態過渡中
-            activeStep = { type: 'init' }
-        } else if (adjustedProgress.lerpFactor < 0.01) {
-            // 更接近當前步驟
-            activeStep = stepData[adjustedProgress.currentIndex]
-        } else {
-            // 更接近下一個步驟
-            activeStep = stepData[adjustedProgress.nextIndex] || stepData[adjustedProgress.currentIndex]
+
+        // 前進：跨越 i→i+1 的邊界
+        if (forward) {
+            const b = boundaryUp(prevIndex)
+            if (progress > b + hysteresis) return Math.min(prevIndex + 1, total - 1)
+            return prevIndex
         }
-        
-        if (!activeStep) return
-        
-        // 判斷當前應該顯示卡片的狀態
-        const shouldShowCards = activeStep.type === 'location'
-        
-        // 檢查當前實際的顯示狀態
-        const isCurrentlyShowing = !state.locationsEl.classList.contains('invisible')
-        
-        // 狀態不一致時進行修正
-        if (shouldShowCards && !isCurrentlyShowing) {
-            // 應該顯示但目前隱藏 → 顯示卡片
-            scrollTriggerEvents.updateSidebar(activeStep)
-        } else if (!shouldShowCards && isCurrentlyShowing) {
-            // 應該隱藏但目前顯示 → 隱藏卡片
-            uiControlEvents.toggleDisplayLocationCardList(false)
-            //mapControl.closePinsPopup()
-            state.curSectionId = null
-        } else if (shouldShowCards && isCurrentlyShowing) {
-            // 都是顯示狀態，更新卡片內容
-            scrollTriggerEvents.updateSidebar(activeStep)
+
+        // 後退：跨越 i→i-1 的邊界
+        if (prevIndex === 0) {
+            const b0 = 0.5 * stepSpan
+            if (progress < b0 - hysteresis) return -1
+            return 0
         }
+        const b = boundaryDown(prevIndex)
+        if (progress < b - hysteresis) return Math.max(prevIndex - 1, -1)
+        return prevIndex
     },
-    calculateStepProgressWithInit: (scrollProgress, totalSteps, pauseRatio, transitionRatio) => {
-        // 總共有 totalSteps + 1 個狀態（包含初始狀態）
-        const totalStates = totalSteps + 1
-        const stepSize = 1 / (totalStates - 1)
-        
-        // 找出當前在哪個狀態區間內
-        let currentStateIndex = -1 // -1 表示初始狀態
-        let localProgress = 0
-        
-        for (let i = 0; i < totalStates - 1; i++) {
-            const stepStart = i * stepSize
-            const stepEnd = (i + 1) * stepSize
-            
-            if (scrollProgress >= stepStart && scrollProgress <= stepEnd) {
-                currentStateIndex = i - 1 // -1, 0, 1, 2... (-1 是初始狀態)
-                localProgress = (scrollProgress - stepStart) / stepSize
-                break
-            }
-        }
-        
-        // 在每個狀態區間內，前 pauseRatio 的部分是停頓，後 transitionRatio 的部分是過渡
-        if (localProgress <= pauseRatio) {
-            // 停頓階段：保持在當前狀態
-            return {
-                currentIndex: currentStateIndex,
-                nextIndex: currentStateIndex,
-                lerpFactor: 0
-            }
-        } else {
-            // 過渡階段：從當前狀態過渡到下一狀態
-            const transitionProgress = (localProgress - pauseRatio) / transitionRatio
-            return {
-                currentIndex: currentStateIndex,
-                nextIndex: Math.min(currentStateIndex + 1, totalSteps - 1),
-                lerpFactor: transitionProgress
-            }
-        }
-    },
-    interpolateMapPosition: (currentStep, nextStep, lerpFactor) => {
-        
-        // 獲取當前和下一個步驟的地圖目標狀態
-        const currentTarget = scrollTriggerEvents.getMapTarget(currentStep)
-        const nextTarget = scrollTriggerEvents.getMapTarget(nextStep)
-        
-        if (!currentTarget || !nextTarget) return
-        
-        // 插值計算經緯度
-        const interpolatedCenter = [
-            currentTarget.center[0] + (nextTarget.center[0] - currentTarget.center[0]) * lerpFactor,
-            currentTarget.center[1] + (nextTarget.center[1] - currentTarget.center[1]) * lerpFactor
-        ]
-        
-        // 插值計算縮放級別
-        const interpolatedZoom = currentTarget.zoom + (nextTarget.zoom - currentTarget.zoom) * lerpFactor
-        
-        // 插值計算偏移量
-        const interpolatedOffset = [
-            currentTarget.offset[0] + (nextTarget.offset[0] - currentTarget.offset[0]) * lerpFactor,
-            currentTarget.offset[1] + (nextTarget.offset[1] - currentTarget.offset[1]) * lerpFactor
-        ]
-        
-        // 計算考慮偏移的實際中心點
-        const offsetCenter = scrollTriggerEvents.calculateOffsetCenter(interpolatedCenter, interpolatedOffset, interpolatedZoom)
-        
-        // 直接設置地圖狀態，不使用 flyTo
-        map.setCenter(offsetCenter)
-        map.setZoom(interpolatedZoom)
-        
-        //console.log(`地圖插值: center=[${offsetCenter[0].toFixed(4)}, ${offsetCenter[1].toFixed(4)}], zoom=${interpolatedZoom.toFixed(2)}, offset=[${interpolatedOffset[0]}, ${interpolatedOffset[1]}]`)
-    },
+
+    //// 封裝地圖移動，套用 offset 轉換
+    //moveMapToTarget: (target) => {
+    //    const offsetCenter = scrollTriggerEvents.calculateOffsetCenter(
+    //        target.center,
+    //        target.offset || [0, 0],
+    //        target.zoom || map.getZoom()
+    //    )
+    //    map.easeTo({
+    //        center: offsetCenter,
+    //        zoom: target.zoom,
+    //        duration: 500,
+    //        easing: t => t
+    //    })
+    //},
     calculateOffsetCenter: (center, offset, zoom) => {
         // 將像素偏移轉換為經緯度偏移
         // 這是一個簡化的計算，基於 Web Mercator 投影
@@ -436,21 +415,6 @@ const scrollTriggerEvents = {
             mapControl.openPinPopup(step.data.id)
         }
     },
-    isLastLocationStep: (currentStep) => {
-        if (currentStep.type !== 'location') return false
-        
-        // 找到當前 section 的所有 location 步驟
-        const currentSectionId = currentStep.data.sectionId
-        const currentSectionLocations = state.stepData.filter(step => 
-            step.type === 'location' && step.data.sectionId === currentSectionId
-        )
-        
-        if (currentSectionLocations.length === 0) return false
-        
-        // 檢查當前步驟是否是該 section 的最後一個 location
-        const lastLocationInSection = currentSectionLocations[currentSectionLocations.length - 1]
-        return currentStep.data.id === lastLocationInSection.data.id
-    },
     getMapTarget: (step) => {
         // 根據步驟類型返回目標地圖狀態
         if (step.type === 'init') {
@@ -481,7 +445,7 @@ const scrollTriggerEvents = {
                 offset: isMobile ? [0, 120] : [150, 0] // 手機版向下偏移，PC版向左偏移
             }
         }
-        
+
         //// 預設返回初始狀態，稍微 zoom out
         //return {
         //    center: mapControl.initMapPosition.center,
@@ -494,39 +458,54 @@ const scrollTriggerEvents = {
         mapControl.closePinsPopup()
         state.curSectionId = null
     },
-    // 使用者手動點擊鎖定側邊欄一段時間，避免邊界抖動覆寫
-    holdSidebarByUser: (locationId, ms = 1500) => {
-        return
-        state.userHoldUntil = Date.now() + ms
-        state.userSelectedLocationId = locationId
-    },
-    // 依據 locationId 捲動到對應的步驟中心
-    scrollToLocationStep: (locationId) => {
-        const st = ScrollTrigger.getById('main-scroll')
-        if (!st || !Array.isArray(state.stepData) || state.stepData.length === 0) return
-
-        // 找出第一個匹配的 location 步驟索引
-        const targetIndex = state.stepData.findIndex(step => step.type === 'location' && step.data && step.data.id === locationId)
-        if (targetIndex < 0) return
-
-        // 主滾動區間起迄（像素）
-        const start = st.start
-        const end = st.end
-
-        // 每個步驟對應 1 個視窗高度的滾動距離
-        const vh = window.innerHeight
-        let targetY = start + (targetIndex + 0.5) * vh
-
-        // 保險：限制在可滾動範圍內
-        targetY = Math.max(start, Math.min(targetY, end))
-
-        // 平滑捲動到對應步驟中心
-        gsap.to(window, {
-            scrollTo: targetY,
-            duration: 0.6,
-            ease: 'power2.inOut'
-        })
-    }
+    //isLastLocationStep: (currentStep) => {
+    //    if (currentStep.type !== 'location') return false
+    //    
+    //    // 找到當前 section 的所有 location 步驟
+    //    const currentSectionId = currentStep.data.sectionId
+    //    const currentSectionLocations = state.stepData.filter(step => 
+    //        step.type === 'location' && step.data.sectionId === currentSectionId
+    //    )
+    //    
+    //    if (currentSectionLocations.length === 0) return false
+    //    
+    //    // 檢查當前步驟是否是該 section 的最後一個 location
+    //    const lastLocationInSection = currentSectionLocations[currentSectionLocations.length - 1]
+    //    return currentStep.data.id === lastLocationInSection.data.id
+    //},
+    //// 使用者手動點擊鎖定側邊欄一段時間，避免邊界抖動覆寫
+    //holdSidebarByUser: (locationId, ms = 1500) => {
+    //    return
+    //    state.userHoldUntil = Date.now() + ms
+    //    state.userSelectedLocationId = locationId
+    //},
+    //// 依據 locationId 捲動到對應的步驟中心
+    //scrollToLocationStep: (locationId) => {
+    //    const st = ScrollTrigger.getById('main-scroll')
+    //    if (!st || !Array.isArray(state.stepData) || state.stepData.length === 0) return
+    //
+    //    // 找出第一個匹配的 location 步驟索引
+    //    const targetIndex = state.stepData.findIndex(step => step.type === 'location' && step.data && step.data.id === locationId)
+    //    if (targetIndex < 0) return
+    //
+    //    // 主滾動區間起迄（像素）
+    //    const start = st.start
+    //    const end = st.end
+    //
+    //    // 每個步驟對應 1 個視窗高度的滾動距離
+    //    const vh = window.innerHeight
+    //    let targetY = start + (targetIndex + 0.5) * vh
+    //
+    //    // 保險：限制在可滾動範圍內
+    //    targetY = Math.max(start, Math.min(targetY, end))
+    //
+    //    // 平滑捲動到對應步驟中心
+    //    gsap.to(window, {
+    //        scrollTo: targetY,
+    //        duration: 0.6,
+    //        ease: 'power2.inOut'
+    //    })
+    //}
 }
 
 const fetchData = async () => {
@@ -596,7 +575,6 @@ const map = new mapboxgl.Map({
     ...mapControl.initMapPosition,
     ...mapControl.userEnableRule
 })
-map.addControl(new mapboxgl.NavigationControl())
 map.scrollZoom.disable()
 
 map.on('load', async () => {
