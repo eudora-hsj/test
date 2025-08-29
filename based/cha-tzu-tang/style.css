@@ -9,6 +9,9 @@ body {
 #map-locations {
     overscroll-behavior: contain;
 }
+#steps-container {
+    pointer-events: none;
+}
 
 .mapboxgl-ctrl-top-right,
 .mapboxgl-ctrl-bottom-left,

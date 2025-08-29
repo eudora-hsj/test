@@ -41,9 +41,9 @@ const domControlEvents = {
             locationEl.id = `location-${location.id}`
             locationEl.setAttribute('data-section', location.sectionId)
             locationEl.innerHTML = `
-            <h3>${location.title}</h3>
-            <p>${location.description}</p>
-        `
+                <h3>${location.title}</h3>
+                <p>${location.description}</p>
+            `
 
             locationEl.addEventListener('click', () => {
                 mapControl.onClickLocationCard(location)
@@ -69,36 +69,17 @@ const domControlEvents = {
         }
     },
     toggleDisplayLocationCards: (sectionId, activeLocationId = null) => {
-        if (!sectionId) {
-            //domControlEvents.toggleDisplayLocationCardList(false)
-        } else {
-            domControlEvents.toggleDisplayLocationCardList(true)
+        domControlEvents.toggleDisplayLocationCardList(true)
+        const isMobile = isMobileDevice()
+        state.locationEls.forEach(el => {
+            el.classList.remove('active')
+            const elLocationId = el.id.replace('location-', '')
 
-            const isMobile = isMobileDevice()
-            
-            state.locationEls.forEach(el => {
-                el.classList.remove('active')
-                const elSectionId = el.getAttribute('data-section')
-                const elLocationId = el.id.replace('location-', '')
+            if (isMobile) {
+                Number(elLocationId) === activeLocationId ?  el.classList.remove('hidden') : el.classList.add('hidden')
+            }
                 
-                //if (elSectionId == sectionId) {
-                    if (isMobile) {
-                        // 手機版：只顯示當前激活的卡片
-                        if (activeLocationId && elLocationId == activeLocationId) {
-                            el.classList.remove('hidden')
-                        } else {
-                            el.classList.add('hidden')
-                        }
-                    } else {
-                        // PC版：顯示該區域所有卡片
-                        el.classList.remove('hidden')
-                    }
-                //} else {
-                //    el.classList.add('hidden')
-                //}
-            })
-
-        }
+        })
 
     },
     loadPins: async () => {
