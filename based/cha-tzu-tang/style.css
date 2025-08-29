@@ -35,7 +35,7 @@ body {
 .marker {
     width: 30px;
     height: 30px;
-    /* 需要讓 marker 可以接收點擊事件 */
+    cursor: pointer;
     pointer-events: auto;
 }
 
@@ -47,6 +47,7 @@ body {
     border: 6px solid #fff;
     transition: transform 0.3s ease-out;
     transform: scale(1);
+    pointer-events: auto;
 }
 
 .marker.active .marker-inner {

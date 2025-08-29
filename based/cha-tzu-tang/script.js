@@ -77,6 +77,18 @@ const mapControl = {
     // },
 }
 
+const scrollControl = {
+    toLocationCard: (location) => {
+        const isMobile = isMobileDevice()
+        if (isMobile) return
+        gsap.to(state.locationsEl, {
+            //duration: 0.8,
+            scrollTo: {y: location, offsetY: 100},
+            //ease: "power2.inOut"
+        })
+    }
+}
+
 const domControlEvents = {
     renderLocationCards: () => {
         if (!state.locationsEl) return
@@ -108,7 +120,6 @@ const domControlEvents = {
             state.dataLocations.forEach(location => {
                 const el = document.createElement('div')
                 el.className = 'marker'
-                el.style.cursor = 'pointer' // 加入 pointer cursor
                 const inner = document.createElement('div')
                 inner.className = 'marker-inner'
                 el.appendChild(inner)
@@ -125,16 +136,12 @@ const domControlEvents = {
 
                 state.markers[location.id] = marker
 
-                // 點擊 marker 時：僅同步右側卡片與彈窗，不捲動主視窗
                 el.addEventListener('click', (e) => {
-                    onClickEvents.marker(e)
+                    onClickEvents.marker(e, location.id)
                 }, { capture: true })
                 popup.on('open', () => {
-                    const popupElement = popup.getElement();
-                    popupElement.classList.add('popup-zoomed');
                     el.classList.add('active');
                 });
-                
                 popup.on('close', () => {
                     el.classList.remove('active');
                 });
@@ -176,46 +183,19 @@ const uiControlEvents = {
         if (selectedLocation && state.locationsEl) {
             state.locationEls.forEach(el => el.classList.remove('active'))
             selectedLocation.classList.add('active')
-
-            const isMobile = isMobileDevice()
-            if (!isMobile) {
-                // PC版：垂直捲動到當前卡片
-                gsap.to(state.locationsEl, {
-                    //duration: 0.8,
-                    scrollTo: {y: selectedLocation, offsetY: 70},
-                    //ease: "power2.inOut"
-                })
-            }
+            scrollControl.toLocationCard(selectedLocation)
         }
     },
 }
 
 const onClickEvents = {
-    marker: (e) => {
-        console.log(e)
+    marker: (e, locationId) => {
         e.preventDefault()
         e.stopPropagation()
-
-        // 停止任何地圖移動動畫，避免位移
-        if (map && typeof map.stop === 'function') {
-            map.stop()
-        }
-
-        // 先關閉其他 popup
+        if (!state.curSectionId) return
         mapControl.closePinsPopup()
-
-        // 更新目前區域，並顯示對應卡片
-        state.curSectionId = location.sectionId
-        uiControlEvents.toggleDisplayLocationCard(location.sectionId, location.id)
-        // 高亮並在 PC 版卡片容器中平滑捲動至可視範圍
-        uiControlEvents.activeLocationCard(location.id)
-        // 僅開啟自己的 popup
-        const mk = state.markers[location.id]
-        if (mk && mk.getPopup()) {
-            mk.togglePopup()
-        }
-        // 在邊界時短暫鎖定側邊欄，避免被 ScrollTrigger 覆寫
-        scrollTriggerEvents.holdSidebarByUser(location.id, 1200)
+        mapControl.openPinPopup(locationId)
+        uiControlEvents.activeLocationCard(locationId)
     },
     locationCard: (location) => {
         location.href && window.open(location.href, '_blank')
@@ -379,6 +359,7 @@ const scrollTriggerEvents = {
         }
     },
     interpolateMapPosition: (currentStep, nextStep, lerpFactor) => {
+        
         // 獲取當前和下一個步驟的地圖目標狀態
         const currentTarget = scrollTriggerEvents.getMapTarget(currentStep)
         const nextTarget = scrollTriggerEvents.getMapTarget(nextStep)
