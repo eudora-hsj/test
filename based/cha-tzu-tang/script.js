@@ -27,6 +27,47 @@ const state = {
 const isMobileDevice = () => {
     return window.innerWidth <= 768
 }
+const mapControl = {
+    initMapPosition: {
+        center: [121.5, 24.9],
+        zoom: 9,
+        pitch: 0,
+        bearing: 0,
+    },
+    popupAttr:{
+        offset: 25,
+        closeButton: false,  // 是否顯示關閉按鈕
+        closeOnClick: false, // 點擊地圖時是否關閉 Popup
+        anchor: 'bottom'     // Popup 固定在 Marker 的上方
+    },
+    closePinsPopup: () => {
+        Object.values(state.markers).forEach(m => {
+            if (m.getPopup().isOpen()) m.togglePopup()
+        })
+    },
+    openPinPopup: (locationId) => {
+        const marker = state.markers[locationId]
+        if (marker) {
+            mapControl.closePinsPopup()
+            marker.togglePopup()
+        }
+    },
+
+    // resetPinPopupState: () => {
+    //
+    // },
+    //
+    // resetMapDivScrollPosition: () => {
+    //     const isScrolledToBottom = state.locationsEl.scrollHeight - state.locationsEl.clientHeight <= state.locationsEl.scrollTop + 1
+    //     if (!isScrolledToBottom) {
+    //         state.locationsEl.scrollIntoView({
+    //             top: state.locationsEl.scrollHeight,
+    //             behavior: 'smooth'
+    //         })
+    //     }
+    //
+    // },
+}
 
 const domControlEvents = {
     renderLocationCards: () => {
@@ -46,41 +87,13 @@ const domControlEvents = {
             `
 
             locationEl.addEventListener('click', () => {
-                mapControl.onClickLocationCard(location)
+                onClickEvents.locationCard(location)
             })
 
             state.locationsEl.appendChild(locationEl)
         })
         state.locationEls = document.querySelectorAll('.map-location')
         state.locationsEl.classList.add('invisible')
-    },
-    toggleDisplayLocationCardList: (isShow) => {
-        if (!state.locationsEl) return
-        
-        const isMobile = isMobileDevice()
-        
-        if (isShow) {
-            // 手機與桌機：直接顯示，不使用動畫
-            state.locationsEl.classList.remove("invisible")
-            state.locationsEl.style.opacity = "1"
-        } else {
-            state.locationsEl.classList.add("invisible")
-            state.locationsEl.style.opacity = "0"
-        }
-    },
-    toggleDisplayLocationCards: (sectionId, activeLocationId = null) => {
-        domControlEvents.toggleDisplayLocationCardList(true)
-        const isMobile = isMobileDevice()
-        state.locationEls.forEach(el => {
-            el.classList.remove('active')
-            const elLocationId = el.id.replace('location-', '')
-
-            if (isMobile) {
-                Number(elLocationId) === activeLocationId ?  el.classList.remove('hidden') : el.classList.add('hidden')
-            }
-                
-        })
-
     },
     loadPins: async () => {
         try {
@@ -91,16 +104,11 @@ const domControlEvents = {
                 const inner = document.createElement('div')
                 inner.className = 'marker-inner'
                 el.appendChild(inner)
-
-                const popup = new mapboxgl.Popup({
-                    offset: 25,
-                    closeButton: false, // 根據需要設定是否顯示關閉按鈕
-                    closeOnClick: false, // 根據需要設定是否點擊地圖時關閉 Popup
-                    anchor: 'bottom' // 將 Popup 固定在點的上方
-                })
+                
+                const popup = new mapboxgl.Popup(mapControl.popupAttr)
                     .setHTML(`
-                    <h3>${location.title}</h3>
-                `)
+                        <h3>${location.title}</h3>
+                    `)
 
                 const marker = new mapboxgl.Marker(el)
                     .setLngLat(location.position)
@@ -111,40 +119,15 @@ const domControlEvents = {
 
                 // 點擊 marker 時：僅同步右側卡片與彈窗，不捲動主視窗
                 el.addEventListener('click', (e) => {
-                    // 阻止 Mapbox 預設的 popup toggle（先行於捕獲階段）
-                    e.preventDefault()
-                    e.stopPropagation()
-
-                    // 停止任何地圖移動動畫，避免位移
-                    if (map && typeof map.stop === 'function') {
-                        map.stop()
-                    }
-
-                    // 先關閉其他 popup
-                    domControlEvents.closePinsPopup()
-
-                    // 更新目前區域，並顯示對應卡片
-                    state.curSectionId = location.sectionId
-                    domControlEvents.toggleDisplayLocationCards(location.sectionId, location.id)
-                    // 高亮並在 PC 版卡片容器中平滑捲動至可視範圍
-                    domControlEvents.activeLocationCard(location.id)
-                    // 僅開啟自己的 popup
-                    const mk = state.markers[location.id]
-                    if (mk && mk.getPopup()) {
-                        mk.togglePopup()
-                    }
-                    // 在邊界時短暫鎖定側邊欄，避免被 ScrollTrigger 覆寫
-                    scrollTriggerEvents.holdSidebarByUser(location.id, 1200)
+                    onClickEvents.marker(e)
                 }, { capture: true })
                 popup.on('open', () => {
                     const popupElement = popup.getElement();
                     popupElement.classList.add('popup-zoomed');
-                    // 為對應的 marker 添加 active class
                     el.classList.add('active');
                 });
                 
                 popup.on('close', () => {
-                    // 移除 marker 的 active class
                     el.classList.remove('active');
                 });
             })
@@ -152,24 +135,39 @@ const domControlEvents = {
             console.error(error)
         }
     },
-    closePinsPopup: () => {
-        Object.values(state.markers).forEach(m => {
-            if (m.getPopup().isOpen()) m.togglePopup()
-        })
-    },
-    openPinPopup: (locationId) => {
-        const marker = state.markers[locationId]
-        if (marker) {
-            domControlEvents.closePinsPopup()
-            marker.togglePopup()
+}
+
+const uiControlEvents = {
+    toggleDisplayLocationCardList: (isShow) => {
+        if (!state.locationsEl) return
+
+        if (isShow) {
+            state.locationsEl.classList.remove("invisible")
+            state.locationsEl.style.opacity = "1"
+        } else {
+            state.locationsEl.classList.add("invisible")
+            state.locationsEl.style.opacity = "0"
         }
+    },
+    toggleDisplayLocationCard: (sectionId, activeLocationId = null) => {
+        uiControlEvents.toggleDisplayLocationCardList(true)
+        const isMobile = isMobileDevice()
+        state.locationEls.forEach(el => {
+            el.classList.remove('active')
+            const elLocationId = el.id.replace('location-', '')
+
+            if (isMobile) {
+                Number(elLocationId) === activeLocationId ?  el.classList.remove('hidden') : el.classList.add('hidden')
+            }
+
+        })
     },
     activeLocationCard: (locationId) => {
         const selectedLocation = document.getElementById(`location-${locationId}`)
         if (selectedLocation && state.locationsEl) {
             state.locationEls.forEach(el => el.classList.remove('active'))
             selectedLocation.classList.add('active')
-            
+
             const isMobile = isMobileDevice()
             if (!isMobile) {
                 // PC版：垂直捲動到當前卡片
@@ -179,36 +177,40 @@ const domControlEvents = {
                     //ease: "power2.inOut"
                 })
             }
-            // 手機版不需要捲動，因為只顯示一張卡片
         }
     },
 }
 
-const mapControl = {
-    initMapPosition: {
-        center: [121.5, 24.9],
-        zoom: 9,
-        pitch: 0,
-        bearing: 0,
+const onClickEvents = {
+    marker: (e) => {
+        console.log(e)
+        e.preventDefault()
+        e.stopPropagation()
+
+        // 停止任何地圖移動動畫，避免位移
+        if (map && typeof map.stop === 'function') {
+            map.stop()
+        }
+
+        // 先關閉其他 popup
+        mapControl.closePinsPopup()
+
+        // 更新目前區域，並顯示對應卡片
+        state.curSectionId = location.sectionId
+        uiControlEvents.toggleDisplayLocationCard(location.sectionId, location.id)
+        // 高亮並在 PC 版卡片容器中平滑捲動至可視範圍
+        uiControlEvents.activeLocationCard(location.id)
+        // 僅開啟自己的 popup
+        const mk = state.markers[location.id]
+        if (mk && mk.getPopup()) {
+            mk.togglePopup()
+        }
+        // 在邊界時短暫鎖定側邊欄，避免被 ScrollTrigger 覆寫
+        scrollTriggerEvents.holdSidebarByUser(location.id, 1200)
     },
-    onClickLocationCard: (location) => {
+    locationCard: (location) => {
         location.href && window.open(location.href, '_blank')
     },
-
-    // resetPinPopupState: () => {
-    //
-    // },
-    //
-    // resetMapDivScrollPosition: () => {
-    //     const isScrolledToBottom = state.locationsEl.scrollHeight - state.locationsEl.clientHeight <= state.locationsEl.scrollTop + 1
-    //     if (!isScrolledToBottom) {
-    //         state.locationsEl.scrollIntoView({
-    //             top: state.locationsEl.scrollHeight,
-    //             behavior: 'smooth'
-    //         })
-    //     }
-    //
-    // },
 }
 
 const scrollTriggerEvents = {
@@ -321,8 +323,8 @@ const scrollTriggerEvents = {
             scrollTriggerEvents.updateSidebar(activeStep)
         } else if (!shouldShowCards && isCurrentlyShowing) {
             // 應該隱藏但目前顯示 → 隱藏卡片
-            domControlEvents.toggleDisplayLocationCardList(false)
-            domControlEvents.closePinsPopup()
+            uiControlEvents.toggleDisplayLocationCardList(false)
+            mapControl.closePinsPopup()
             state.curSectionId = null
         } else if (shouldShowCards && isCurrentlyShowing) {
             // 都是顯示狀態，更新卡片內容
@@ -414,34 +416,34 @@ const scrollTriggerEvents = {
         // 根據步驟類型更新側邊欄
         if (step.type === 'init') {
             // 初始狀態：隱藏所有側邊欄內容
-            domControlEvents.toggleDisplayLocationCardList(false)
-            domControlEvents.closePinsPopup()
+            uiControlEvents.toggleDisplayLocationCardList(false)
+            mapControl.closePinsPopup()
             state.curSectionId = null
         } else if (step.type === 'section') {
             // section 步驟時：如果之前有顯示的 section 卡片，需要關閉
             if (state.curSectionId) {
-                domControlEvents.toggleDisplayLocationCardList(false)
-                domControlEvents.closePinsPopup()
+                uiControlEvents.toggleDisplayLocationCardList(false)
+                mapControl.closePinsPopup()
                 state.curSectionId = null
             }
         } else if (step.type === 'location') {
             // 先確保該地點所屬區域的卡片已顯示
             if (!state.curSectionId || state.curSectionId !== step.data.sectionId) {
                 state.curSectionId = step.data.sectionId
-                // 傳遞當前地點 ID 給 toggleDisplayLocationCards
-                domControlEvents.toggleDisplayLocationCards(step.data.sectionId, step.data.id)
+                // 傳遞當前地點 ID 給 toggleDisplayLocationCard
+                uiControlEvents.toggleDisplayLocationCard(step.data.sectionId, step.data.id)
             } else {
                 // 如果已經是同一個區域，只需要更新顯示的卡片（手機版）
                 const isMobile = isMobileDevice()
                 if (isMobile) {
-                    domControlEvents.toggleDisplayLocationCards(step.data.sectionId, step.data.id)
+                    uiControlEvents.toggleDisplayLocationCard(step.data.sectionId, step.data.id)
                 }
             }
             
             // 高亮當前地點卡片
-            domControlEvents.activeLocationCard(step.data.id)
+            uiControlEvents.activeLocationCard(step.data.id)
             // 顯示地圖標記彈窗
-            domControlEvents.openPinPopup(step.data.id)
+            mapControl.openPinPopup(step.data.id)
         }
     },
     isLastLocationStep: (currentStep) => {
@@ -499,8 +501,8 @@ const scrollTriggerEvents = {
         //}
     },
     toInit: () => {
-        domControlEvents.toggleDisplayLocationCardList(false)
-        domControlEvents.closePinsPopup()
+        uiControlEvents.toggleDisplayLocationCardList(false)
+        mapControl.closePinsPopup()
         state.curSectionId = null
     },
     // 使用者手動點擊鎖定側邊欄一段時間，避免邊界抖動覆寫
